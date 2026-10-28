@@ -9,7 +9,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
-const { safeStorage } = require('electron');
 const ollama = require('./ollama');
 
 const WIN = process.platform === 'win32';
@@ -131,22 +130,27 @@ function launchThroughOllama(integration) {
   return { ok: true };
 }
 
-// API keys are kept encrypted in config.json, with your Windows account (DPAPI): "enc:<base64>".
-function sealKey(key) {
-  return safeStorage.isEncryptionAvailable() ? `enc:${safeStorage.encryptString(key).toString('base64')}` : key;
-}
-
-function openKey(stored) {
-  if (typeof stored !== 'string' || !stored.startsWith('enc:')) return stored || '';
-  try {
-    return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'));
-  } catch {
-    return '';
+// API keys are kept encrypted in config.json, with your account (the platform's secrets: DPAPI on
+// Windows, the Keychain on macOS…): "enc:<base64>".
+function createKeys({ platform }) {
+  function sealKey(key) {
+    return platform.secrets.isAvailable() ? `enc:${platform.secrets.encrypt(key).toString('base64')}` : key;
   }
-}
 
-const openKeys = (apiKeys = {}) => Object.fromEntries(Object.entries(apiKeys).map(([id, v]) => [id, openKey(v)]));
+  function openKey(stored) {
+    if (typeof stored !== 'string' || !stored.startsWith('enc:')) return stored || '';
+    try {
+      return platform.secrets.decrypt(Buffer.from(stored.slice(4), 'base64'));
+    } catch {
+      return '';
+    }
+  }
+
+  const openKeys = (apiKeys = {}) => Object.fromEntries(Object.entries(apiKeys).map(([id, v]) => [id, openKey(v)]));
+
+  return { sealKey, openKey, openKeys };
+}
 
 module.exports = {
-  MODELS, KEY_PAGES, ollamaState, installOllama, startOllama, pullModel, launchThroughOllama, sealKey, openKeys,
+  MODELS, KEY_PAGES, ollamaState, installOllama, startOllama, pullModel, launchThroughOllama, createKeys,
 };

@@ -10,7 +10,8 @@ const {
 } = require('electron');
 const { randomUUID } = require('node:crypto');
 
-const config = require('./config');
+const { createConfig } = require('./config');
+const { createElectronPlatform } = require('./platform/electron');
 const { TRAY, LANGS } = require('./labels');
 const lang = require('./lang');
 const { createBridge } = require('./bridge');
@@ -25,8 +26,8 @@ const llm = require('./llm');
 const ollama = require('./ollama');
 const setup = require('./setup');
 const apps = require('./apps');
-const launch = require('./launch');
-const files = require('./files');
+const { createLaunch } = require('./launch');
+const { createFiles } = require('./files');
 const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
 const activeHooks = () => activeAssistant().hooks;
@@ -37,22 +38,20 @@ const caps = createCapabilities({ helpers: { windowWatch: WINDOW_HELPER } });
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
 const SMOKE = process.argv.includes('--smoke-test');
+const platform = createElectronPlatform({ root: ROOT, dev: DEV, smoke: SMOKE });
+const config = createConfig({ platform });
+const keys = setup.createKeys({ platform });
+const launch = createLaunch({ platform });
+const files = createFiles({ platform });
 if (SMOKE) {
   app.setPath('userData', process.env.CAPRI_SMOKE_DATA || fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-')));
   config.save({ welcomed: true, claude: false, muted: true, motion: 'reduced', render: process.platform === 'linux' ? 'software' : 'auto' });
-  if (process.platform === 'linux') app.commandLine.appendSwitch('use-angle', 'swiftshader');
   setTimeout(() => { console.error('[capri] smoke test timed out'); app.exit(1); }, 30000).unref();
 }
-// A consistent X11 backend is needed for global cursor coordinates and transparent overlays.
-if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
 const PORT = Number(process.env.CAPRI_PORT) || 47823;
 const SOUND_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 
 const OLLAMA_SITE = 'https://ollama.com';
-
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'capri', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
-]);
 
 let overlay = null;
 let tray = null;
@@ -430,7 +429,7 @@ async function saveSettingsKey(input) {
   if (!checked.ok) return { ok: false, field: checked.field };
   const before = config.load();
   try {
-    updateConfig({ apiKeys: { ...before.apiKeys, [provider]: setup.sealKey(checked.key) } }, { strict: true });
+    updateConfig({ apiKeys: { ...before.apiKeys, [provider]: keys.sealKey(checked.key) } }, { strict: true });
   } catch (err) {
     console.error('[capri] key not saved:', err.code || 'write failed');
     settings?.update();
@@ -853,7 +852,7 @@ async function pickProvider(provider) {
 
 // What llm.js gets: the config with its keys opened (they're kept encrypted, setup.js)
 function llmConfig(cfg = config.load()) {
-  return { ...cfg, apiKeys: setup.openKeys(cfg.apiKeys) };
+  return { ...cfg, apiKeys: keys.openKeys(cfg.apiKeys) };
 }
 
 async function pickClaudeFolder() {
@@ -1049,7 +1048,7 @@ function registerIpc() {
     if (!llm.PROVIDERS[provider]) return { ok: false, error: 'unknown provider' };
     const before = config.load();
     const patch = { provider };
-    if (key) patch.apiKeys = { ...before.apiKeys, [provider]: setup.sealKey(String(key).trim()) };
+    if (key) patch.apiKeys = { ...before.apiKeys, [provider]: keys.sealKey(String(key).trim()) };
     if (url) patch.customUrl = String(url).trim();
     updateConfig(patch);
     const models = await refreshModels();
@@ -1420,13 +1419,19 @@ function main() {
       // no Dock icon on macOS: the app has to come forward for its window to get the keyboard
       focusApp: () => process.platform === 'darwin' && app.focus({ steal: true }),
     });
-    updates = startUpdates({ app, smoke: SMOKE, onChange: updatesChanged });
+    updates = startUpdates({ platform, smoke: SMOKE, onChange: updatesChanged });
     createOverlay();
     createTray();
     // an adapter that starts or gives up changes what she offers: the menu and the overlay hear of it
     caps.onChange(() => updateConfig({}));
     windowWatch = startWindowWatch({
-      overlay,
+      platform,
+      overlay: { // what the watchers ask of her window (the platform's overlay handle, from the next commit)
+        bounds: () => overlay.getBounds(),
+        isAlive: () => !overlay.isDestroyed(),
+        nativeHandle: () => overlay.getNativeWindowHandle(),
+        mediaSourceId: () => overlay.getMediaSourceId(),
+      },
       session: caps.session, // Linux: X11 only, never XWayland or native Wayland
       onState: (ok) => caps.set('windowTracking', ok),
       onUpdate: (data) => {

@@ -63,7 +63,7 @@ function toUpdate(snapshot, bounds) {
 // Capri's own overlay, as a window number the helper can skip ("window:<CGWindowID>:0")
 function overlayWindowId(overlay) {
   try {
-    const m = /^window:(\d+):/.exec(overlay.getMediaSourceId());
+    const m = /^window:(\d+):/.exec(overlay.mediaSourceId());
     return m ? Number(m[1]) : null;
   } catch {
     return null;
@@ -100,8 +100,8 @@ function startMacWindowWatch({
   let last = null; // the helper's last snapshot: it only speaks when something changes
 
   const send = () => {
-    if (!last || overlay.isDestroyed()) return;
-    onUpdate(toUpdate(last, overlay.getBounds()));
+    if (!last || !overlay.isAlive()) return;
+    onUpdate(toUpdate(last, overlay.bounds()));
   };
 
   // the running helper, if any, let go: whatever it still prints or however it ends is ignored
@@ -117,7 +117,7 @@ function startMacWindowWatch({
   const giveUp = () => {
     log('[capri] window watch: the macOS helper keeps failing, windows are not tracked');
     last = null;
-    if (!overlay.isDestroyed()) onUpdate(emptyUpdate());
+    if (overlay.isAlive()) onUpdate(emptyUpdate());
     onState(false);
   };
 

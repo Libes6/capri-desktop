@@ -299,22 +299,24 @@ function updateMode({ platform, packaged, smoke = false, env = {}, feed }) {
   return { disabled: 'platform' };
 }
 
-// --- Electron wiring (main.js) ----------------------------------------------------------------
+// --- Platform wiring (core.js) -----------------------------------------------------------------
 
 /**
- * Starts the updater of the running app. deps: app, smoke, onChange(view), log, macInstaller (tests)
+ * Starts the updater of the running app. deps: platform (platform/index.js: the app's version and
+ * folders, relaunch and quit, and electron-updater's autoUpdater through platform.updater),
+ * smoke, onChange(view), log
  * Returns the controller, plus page() and the startup check scheduled.
  */
-function startUpdates({ app, smoke = false, onChange = () => {}, log = (line) => console.log(`[capri] update: ${line}`) }) {
-  const packaged = app.isPackaged;
-  const testBuild = Boolean(packaged && safeRequire(path.join(app.getAppPath(), 'package.json'))?.capriUpdaterTest === true);
-  const feed = packaged ? readFeed(path.join(process.resourcesPath, 'app-update.yml'), { testBuild }) : null;
+function startUpdates({ platform, smoke = false, onChange = () => {}, log = (line) => console.log(`[capri] update: ${line}`) }) {
+  const packaged = platform.app.isPackaged();
+  const testBuild = Boolean(packaged && safeRequire(path.join(platform.paths.get('appPath'), 'package.json'))?.capriUpdaterTest === true);
+  const feed = packaged ? readFeed(path.join(platform.paths.get('resources'), 'app-update.yml'), { testBuild }) : null;
   const mode = updateMode({ platform: process.platform, packaged, smoke, env: process.env, feed });
   if (mode.disabled) {
     log(`disabled (${mode.disabled})`);
-    return new UpdateController({ disabled: mode.disabled, current: app.getVersion(), onChange });
+    return new UpdateController({ disabled: mode.disabled, current: platform.app.version(), onChange });
   }
-  const { autoUpdater } = require('electron-updater');
+  const { autoUpdater, CancellationToken } = platform.updater.get();
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = false;
@@ -326,15 +328,14 @@ function startUpdates({ app, smoke = false, onChange = () => {}, log = (line) =>
   let transport;
   if (mode.kind === 'mac') {
     const mac = require('./mac-update');
-    mac.cleanup({ exePath: app.getPath('exe'), tmpDir: app.getPath('temp') });
-    const { CancellationToken } = require('electron-updater');
+    mac.cleanup({ exePath: platform.paths.get('exe'), tmpDir: platform.paths.get('temp') });
     transport = macTransport(autoUpdater, mac.createMacInstaller({
-      exePath: app.getPath('exe'),
-      tmpDir: app.getPath('temp'),
+      exePath: platform.paths.get('exe'),
+      tmpDir: platform.paths.get('temp'),
       download: (url, dest, opts) => autoUpdater.httpExecutor.download(new URL(url), dest, { ...opts, cancellationToken: new CancellationToken() }),
       relaunch: () => {
-        app.relaunch();
-        app.quit();
+        platform.app.relaunch();
+        platform.app.quit();
       },
     }));
   } else if (mode.mode === 'notify') {
@@ -342,7 +343,7 @@ function startUpdates({ app, smoke = false, onChange = () => {}, log = (line) =>
   } else {
     transport = updaterTransport(autoUpdater);
   }
-  const controller = new UpdateController({ transport, mode: mode.mode, current: app.getVersion(), onChange, log });
+  const controller = new UpdateController({ transport, mode: mode.mode, current: platform.app.version(), onChange, log });
   log(`${mode.kind} (${feed.test ? 'local test feed' : `github ${OWNER}/${REPO}`})`);
   // once, unless a check was already asked for in the settings by then
   setTimeout(() => controller.status.kind === 'idle' && controller.check(), STARTUP_DELAY).unref?.();

@@ -5,13 +5,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { createConfig } = require('../src/main/config');
+const { createFakePlatform } = require('../src/main/platform/fake');
 
-// config.js asks Electron for its folder: a stand-in pointing at a temporary one, set per test
+// config.js asks the platform for its folder: a stand-in pointing at a temporary one, set per test
 let userData = null;
-require.cache[require.resolve('electron')] = {
-  id: 'electron', filename: 'electron', loaded: true, exports: { app: { getPath: () => userData } },
-};
-const config = require('../src/main/config');
+const config = createConfig({ platform: createFakePlatform({ overrides: { paths: { get: () => userData } } }) });
 const { checkPatch, toConfig, checkKey, resetPatch, RESET_KEYS } = require('../src/main/settings-patch');
 const { settingsView } = require('../src/main/settings-view');
 const { LANGS, SETTINGS, TRAY } = require('../src/main/labels');
