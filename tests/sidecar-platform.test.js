@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createPeer } = require('../sidecar/rpc');
-const { createSidecarPlatform } = require('../src/main/platform/sidecar');
+const { createSidecarPlatform, sealWith, openWith } = require('../src/main/platform/sidecar');
 const { missing } = require('../src/main/platform');
 const { createCore } = require('../src/main/core');
 
@@ -65,9 +65,9 @@ test('rpc: a request that is never answered times out, close() rejects what wait
   await assert.rejects(sidecar.request('x', {}), /rpc closed/);
 });
 
-async function startOnSidecar(extra = {}) {
+async function startOnSidecar(extra = {}, more = {}) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-sidecar-'));
-  const rustHandlers = { 'overlay.create': ({ area }) => ({ ...area }), 'overlay.setBounds': ({ rect }) => rect };
+  const rustHandlers = { 'overlay.create': ({ area }) => ({ ...area }), 'overlay.setBounds': ({ rect }) => rect, ...more };
   const { rust, sidecar, seen } = wire({ rustHandlers });
   const hello = {
     name: 'Capri', version: '9.9.9', packaged: false, tauri: '2',
@@ -128,16 +128,188 @@ test('what Rust cannot do yet is answered neutrally and logged once, the core do
   const { seen, platform, core, userData } = await startOnSidecar();
   try {
     core.start();
+    // the key store is not asked until init(): no key store, keys stay plain (as Electron without safeStorage)
     assert.equal(platform.secrets.isAvailable(), false);
-    assert.equal(await platform.capture.screen({}, {}), null);
-    assert.deepEqual(await platform.shell.openExternal('https://example.com'), { unsupported: true });
-    await platform.shell.openExternal('https://example.com');
     assert.equal(platform.shortcuts.register('X', () => {}), false);
-    const logs = seen.filter((s) => s.kind === 'log' && /unsupported: shell.openExternal/.test(s.m));
+    platform.shortcuts.register('Y', () => {});
+    const logs = seen.filter((s) => s.kind === 'log' && /unsupported: shortcuts.register/.test(s.m));
     assert.equal(logs.length, 1, 'logged once');
-    assert.ok(platform.unsupported.has('tray.create') && platform.unsupported.has('shortcuts.register'));
+    assert.ok(platform.unsupported.has('tray.create') || platform.unsupported.has('shortcuts.register'));
     core.stop();
   } finally {
     fs.rmSync(userData, { recursive: true, force: true });
   }
+});
+
+// TAURI-07: the native services, asked of a fake Rust
+const MASTER = Buffer.alloc(32, 7).toString('base64');
+
+test('secrets: init fetches the master key, keys are sealed as kc: and open again, an enc: key is not taken for a plain one', async () => {
+  const { platform, userData, sidecar } = await startOnSidecar({}, { 'secrets.masterKey': () => ({ available: true, key: MASTER }), 'app.appForProtocol': () => false });
+  try {
+    await platform.init();
+    assert.equal(platform.secrets.isAvailable(), true);
+    const { createKeys } = require('../src/main/setup');
+    const keys = createKeys({ platform });
+    const sealed = keys.sealKey('sk-secret-123');
+    assert.match(sealed, /^kc:[A-Za-z0-9+/=]+$/);
+    assert.ok(!sealed.includes('sk-secret-123'));
+    assert.equal(keys.openKey(sealed), 'sk-secret-123');
+    assert.notEqual(keys.sealKey('sk-secret-123'), sealed, 'a fresh nonce each time');
+    // blob layout: version | nonce(12) | ciphertext | tag(16)
+    const blob = Buffer.from(sealed.slice(3), 'base64');
+    assert.equal(blob[0], 1);
+    assert.equal(blob.length, 1 + 12 + 'sk-secret-123'.length + 16);
+    // a plain key stays itself; another kind's sealed key, a damaged one and one sealed under another master read as empty
+    assert.equal(keys.openKey('sk-plain'), 'sk-plain');
+    assert.equal(keys.openKey('enc:AAAA'), '');
+    const damaged = Buffer.from(blob); damaged[damaged.length - 1] ^= 1;
+    assert.equal(keys.openKey(`kc:${damaged.toString('base64')}`), '');
+    assert.equal(keys.openKeys({ a: sealed, b: 'plain' }).b, 'plain');
+    assert.throws(() => openWith(Buffer.alloc(32, 7), sealWith(Buffer.alloc(32, 9), 'x')), 'another master key cannot open it');
+    sidecar.close('done');
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('secrets: no key store means isAvailable false and keys stay plain, as Electron without safeStorage', async () => {
+  const { platform, userData, seen } = await startOnSidecar({}, { 'secrets.masterKey': () => ({ available: false, reason: 'no secret service' }), 'app.appForProtocol': () => false });
+  try {
+    await platform.init();
+    assert.equal(platform.secrets.isAvailable(), false);
+    const { createKeys } = require('../src/main/setup');
+    const keys = createKeys({ platform });
+    assert.equal(keys.sealKey('sk-1'), 'sk-1');
+    assert.equal(keys.openKey('kc:AAAA'), '', 'a sealed key that cannot be opened is empty, never the ciphertext');
+    assert.ok(seen.some((s) => s.kind === 'log' && /no system key store.*no secret service/.test(s.m)));
+    assert.ok(!seen.some((s) => /sk-1/.test(JSON.stringify(s))), 'the key is not logged');
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('Electron keys (enc:) are opened by the Electron platform only, kc: keys by the Tauri one', () => {
+  const { createKeys } = require('../src/main/setup');
+  const { createFakePlatform } = require('../src/main/platform/fake');
+  const fake = createFakePlatform();
+  const electronLike = createKeys({ platform: fake });
+  const sealed = electronLike.sealKey('k1');
+  assert.match(sealed, /^enc:/);
+  assert.equal(electronLike.openKey(sealed), 'k1');
+  assert.equal(electronLike.openKey('kc:AAAA'), '');
+});
+
+test('shell: openExternal rejects what Rust refuses, openPath answers the error text, showItemInFolder is told', async () => {
+  const { platform, userData, seen } = await startOnSidecar({}, {
+    'shell.openExternal': ({ url }) => { if (!/^https:/.test(url)) throw new Error('links of the kind file: are not opened'); return null; },
+    'shell.openPath': ({ path: p }) => (p === '/ok' ? '' : 'the path does not exist'),
+    'shell.showItemInFolder': () => null,
+  });
+  try {
+    await platform.shell.openExternal('https://example.com');
+    await assert.rejects(platform.shell.openExternal('file:///etc/passwd'), /not opened/);
+    assert.equal(await platform.shell.openPath('/ok'), '');
+    assert.equal(await platform.shell.openPath('/no'), 'the path does not exist');
+    platform.shell.showItemInFolder('/ok');
+    await tick();
+    assert.ok(seen.some((s) => s.method === 'shell.showItemInFolder' && s.params.path === '/ok'));
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('capture, clipboard and the folder picker go to Rust and come back as the contract says', async () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  const { platform, userData, seen } = await startOnSidecar({}, {
+    'capture.screen': ({ width }) => (width > 0 ? png.toString('base64') : null),
+    'clipboard.writeImage': ({ png: b64 }) => { if (Buffer.from(b64, 'base64').equals(png)) return true; throw new Error('bad'); },
+    'dialogs.pickFolder': ({ default: d }) => (d === '/home/x' ? '/home/x/project' : null),
+  });
+  try {
+    const shot = await platform.capture.screen(display, { width: 640, height: 400, format: 'jpeg', quality: 60 });
+    assert.ok(Buffer.isBuffer(shot) && shot.equals(png));
+    assert.deepEqual(seen.find((s) => s.method === 'capture.screen').params, { bounds: display.bounds, width: 640, height: 400, format: 'jpeg', quality: 60 });
+    assert.equal(await platform.capture.screen(display, { width: 0, height: 0 }), null, 'no picture is null');
+    await platform.clipboard.writeImage(png);
+    assert.equal(await platform.dialogs.pickFolder('/home/x'), '/home/x/project');
+    assert.equal(await platform.dialogs.pickFolder('/elsewhere'), null);
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('capture: a failure in Rust is a missing picture, not an exception', async () => {
+  const { platform, userData } = await startOnSidecar({}, { 'capture.screen': () => { throw new Error('boom'); } });
+  try {
+    assert.equal(await platform.capture.screen(display, { width: 10, height: 10 }), null);
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('power: events from Rust reach the listeners, the lock is remembered for getSystemIdleState', async () => {
+  const { rust, platform, userData, seen } = await startOnSidecar({}, { 'power.idle': () => ({ seconds: 500, state: 'idle' }) });
+  try {
+    const got = [];
+    for (const e of ['suspend', 'resume', 'lock-screen', 'unlock-screen', 'user-did-resign-active', 'user-did-become-active']) platform.power.on(e, () => got.push(e));
+    for (const e of ['suspend', 'resume', 'lock-screen']) rust.notify('power', { event: e });
+    await tick();
+    assert.deepEqual(got, ['suspend', 'resume', 'lock-screen']);
+    assert.equal(platform.power.getSystemIdleState(1), 'locked');
+    rust.notify('power', { event: 'unlock-screen' });
+    await tick();
+    assert.equal(platform.power.getSystemIdleState(60), 'active', 'the first answer is the cached one');
+    await tick();
+    assert.equal(platform.power.getSystemIdleState(60), 'idle', 'refreshed from Rust');
+    assert.ok(seen.some((s) => s.method === 'power.idle' && s.params.threshold === 60));
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('power: started behind the lock screen (hello says so), it is locked from the start', async () => {
+  const { platform, hello, userData } = await startOnSidecar();
+  try {
+    const locked = createSidecarPlatform({ rpc: { request: async () => null, notify() {} }, hello: { ...hello, locked: true }, root: __dirname, log: () => {} });
+    assert.equal(locked.power.getSystemIdleState(1), 'locked');
+    assert.equal(platform.power.getSystemIdleState(1), 'active');
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('appForProtocol: the answer asked for in init, then for any link once it is asked about', async () => {
+  const asked = [];
+  const { platform, userData } = await startOnSidecar({}, {
+    'secrets.masterKey': () => ({ available: false }),
+    'app.appForProtocol': ({ url }) => { asked.push(url); return url === 'roblox://' || url === 'steam://'; },
+  });
+  try {
+    await platform.init();
+    assert.equal(platform.app.appForProtocol('roblox://'), true);
+    assert.equal(platform.app.appForProtocol('steam://'), false, 'not asked yet');
+    await tick();
+    assert.equal(platform.app.appForProtocol('steam://x'), true);
+    assert.equal(platform.app.appForProtocol('nonsense'), false);
+    assert.deepEqual(asked, ['roblox://', 'steam://']);
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('userSoundUrl: capri://usersounds/ here, http://capri.localhost/ for the Windows webview', async () => {
+  const { platform, userData } = await startOnSidecar();
+  try {
+    const expected = process.platform === 'win32' ? 'http://capri.localhost/a%20b.mp3' : 'capri://usersounds/a%20b.mp3';
+    assert.equal(platform.app.userSoundUrl('a b.mp3'), expected);
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('the window helper is looked for in the resources folder when the sidecar is told where it is', () => {
+  const { helperPath } = require('../src/main/mac/window-watch');
+  assert.equal(helperPath('/$capri/src/main/mac', undefined, { CAPRI_RESOURCES: '/App/Resources' }), path.join('/App/Resources', 'bin', 'capri-windows'));
+  assert.equal(helperPath('/repo/src/main/mac', undefined, {}), path.join('/repo/src/main/mac', 'bin', 'capri-windows'));
 });

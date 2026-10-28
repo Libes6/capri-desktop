@@ -15,7 +15,7 @@
 //   app        name() version() runtimeVersion() isPackaged() languages() whenReady() onQuit(fn)
 //              singleInstance(onSecond) -> bool, stayAlive() relaunch() quit() exit(code) focus()
 //              hideFromDock() setAppId(id) installAppMenu() appForProtocol(url) -> bool
-//              setRenderMode(mode) gpuStatus() serveAssets({ userSoundsDir })
+//              setRenderMode(mode) gpuStatus() serveAssets({ userSoundsDir }) userSoundUrl(file) -> string
 //   autostart  isEnabled() -> bool, set(on)
 //   screens    all() primary() nearest(point) cursor() toDip(rect) on(event, fn) removeListener(event, fn)
 //   power      on(event, fn) removeListener(event, fn) getSystemIdleState(seconds)
@@ -39,7 +39,7 @@ const SHAPE = {
   app: [
     'name', 'version', 'runtimeVersion', 'isPackaged', 'languages', 'whenReady', 'onQuit', 'singleInstance', 'stayAlive',
     'relaunch', 'quit', 'exit', 'focus', 'hideFromDock', 'setAppId', 'installAppMenu', 'appForProtocol', 'setRenderMode',
-    'gpuStatus', 'serveAssets',
+    'gpuStatus', 'serveAssets', 'userSoundUrl',
   ],
   autostart: ['isEnabled', 'set'],
   screens: ['all', 'primary', 'nearest', 'cursor', 'toDip', 'on', 'removeListener'],

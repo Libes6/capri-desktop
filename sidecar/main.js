@@ -15,10 +15,17 @@
 const path = require('node:path');
 const { createPeer } = require('./rpc');
 const { createSidecarPlatform } = require('../src/main/platform/sidecar');
-const { createCore } = require('../src/main/core');
 
 // stdout is the protocol's: whatever the core prints with console.log / info goes to stderr
 console.log = console.info = console.debug = (...args) => console.error(...args);
+
+function isSea() {
+  try {
+    return require('node:sea').isSea();
+  } catch {
+    return false;
+  }
+}
 
 const log = (message) => process.stderr.write(`[sidecar] ${message}\n`);
 
@@ -45,7 +52,14 @@ async function main() {
   process.on('unhandledRejection', (err) => log(`unhandled rejection: ${err?.stack || err}`));
 
   const hello = await peer.request('hello', {});
+  // The window helpers (capri-windows on macOS, windows.ps1) are files of the app, not of this bundle:
+  // packaged (a Node SEA executable, or the shell says so), they are looked for in the resources folder
+  // (<resources>/bin/capri-windows, <resources>/windows.ps1). From a clone the sources' own folders do.
+  // Set before the core is loaded: its modules read it when they are.
+  if ((isSea() || hello.packaged) && hello.paths.resources) process.env.CAPRI_RESOURCES = hello.paths.resources;
+  const { createCore } = require('../src/main/core');
   platform = createSidecarPlatform({ rpc: peer, hello, root, log });
+  await platform.init(); // the key store's master key and the like: the synchronous methods answer from it
   const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined });
 
   // The one door in (src/main/dispatch.js): a refusal is a ProtocolError, never a crash. A command that

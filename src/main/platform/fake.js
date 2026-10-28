@@ -84,6 +84,7 @@ function createFakePlatform({ userData, overrides = {}, display } = {}) {
       setAppId: (id) => note('app.setAppId', [id]),
       installAppMenu: () => note('app.installAppMenu', []),
       appForProtocol: (url) => state.protocols.has(url),
+      userSoundUrl: (file) => `capri://usersounds/${encodeURIComponent(file)}`,
       setRenderMode: (mode) => note('app.setRenderMode', [mode]),
       gpuStatus: () => ({}),
       serveAssets: (opts) => note('app.serveAssets', [opts]),

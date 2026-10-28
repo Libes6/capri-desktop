@@ -850,7 +850,7 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     try {
       return fs.readdirSync(userSoundsDir())
         .filter((f) => SOUND_EXT.test(f))
-        .map((f) => ({ name: f.replace(SOUND_EXT, '').toLowerCase(), url: `capri://usersounds/${encodeURIComponent(f)}` }));
+        .map((f) => ({ name: f.replace(SOUND_EXT, '').toLowerCase(), url: platform.app.userSoundUrl(f) }));
     } catch {
       return [];
     }

@@ -22,6 +22,11 @@ use crate::rpc::{self, Incoming, Pending, RpcError};
 pub trait Handler: Send + Sync + 'static {
     /// A request from the sidecar; the answer goes back to it.
     fn on_request(&self, method: &str, params: Value) -> Result<Value, RpcError>;
+    /// A request that may take long (a dialog, the key store, a screen grab): answered on its own
+    /// thread, so the sidecar's other messages are not held up behind it.
+    fn slow(&self, _method: &str) -> bool {
+        false
+    }
     fn on_notification(&self, method: &str, params: Value);
     /// The process ended (`restarting`: another one is coming; false: it gave up or the app is leaving).
     fn on_down(&self, reason: &str, restarting: bool);
@@ -254,10 +259,18 @@ fn read_loop(out: impl std::io::Read, inner: &Arc<Inner>, handler: &Arc<dyn Hand
             }
             Ok(Incoming::Notification { method, params }) => handler.on_notification(&method, params),
             Ok(Incoming::Request { id, method, params }) => {
-                let answer = handler.on_request(&method, params);
-                let line = rpc::response_line(&id, answer);
-                if let Some(stdin) = inner.stdin.lock().unwrap().as_mut() {
-                    let _ = stdin.write_all(line.as_bytes()).and_then(|_| stdin.flush());
+                let slow = handler.slow(&method);
+                let answer = move |inner: &Inner, handler: &Arc<dyn Handler>| {
+                    let line = rpc::response_line(&id, handler.on_request(&method, params));
+                    if let Some(stdin) = inner.stdin.lock().unwrap().as_mut() {
+                        let _ = stdin.write_all(line.as_bytes()).and_then(|_| stdin.flush());
+                    }
+                };
+                if slow {
+                    let (inner, handler) = (inner.clone(), handler.clone());
+                    thread::spawn(move || answer(&inner, &handler));
+                } else {
+                    answer(inner, handler);
                 }
             }
             Err(why) => eprintln!("[capri] sidecar stdout: {why}"),

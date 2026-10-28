@@ -6,11 +6,16 @@
 //
 // What the Rust side answers today: paths, the overlay window (create, bounds, click-through, level,
 // focusable), events to her page, quit / relaunch / exit, the screens and the cursor (pushed by Rust,
-// read here from a cache because the platform's methods are synchronous). Everything else (tray,
-// settings window, secrets, capture, clipboard, shortcuts, autostart, shell, power, dialogs, demo
-// window, updater) belongs to TAURI-05..07: it answers { unsupported: true } where a method answers
+// read here from a cache because the platform's methods are synchronous); and (TAURI-07) the key store,
+// screen capture, clipboard, links and files, the folder picker, power events and idle time, and which
+// application a link opens. Everything else (tray, settings window, shortcuts, autostart, demo window,
+// updater) belongs to TAURI-05, 06 and 10: it answers { unsupported: true } where a method answers
 // anything, or the neutral value of its type (no picture: null, no key store: false), and is logged
 // once. The core never crashes on it.
+//
+// Some methods are synchronous in the platform's contract but need an answer from Rust (secrets, the
+// idle state, appForProtocol): `init()` fetches what they need before the core starts (the master key
+// of the key store, the links it will ask about), and they answer from that.
 //
 //   rpc: a sidecar/rpc.js peer
 //   hello: what Rust says of itself first (see src-tauri/src/sidecar.rs `hello`): identifier, name,
@@ -18,7 +23,25 @@
 //   root: the project folder in dev, the resources folder when packaged
 
 const { EventEmitter } = require('node:events');
+const crypto = require('node:crypto');
 const path = require('node:path');
+
+// API keys sealed in config.json as "kc:<base64>" (Electron's safeStorage ones are "enc:", setup.js
+// createKeys tells them apart): AES-256-GCM under the master key that lives in the system key store
+// (src-tauri/src/secrets.rs). The blob is: version byte 1 | 12-byte nonce | ciphertext | 16-byte tag.
+const SEAL_VERSION = 1;
+function sealWith(masterKey, text) {
+  const nonce = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', masterKey, nonce);
+  const body = Buffer.concat([cipher.update(String(text), 'utf8'), cipher.final()]);
+  return Buffer.concat([Buffer.from([SEAL_VERSION]), nonce, body, cipher.getAuthTag()]);
+}
+function openWith(masterKey, blob) {
+  if (blob.length < 1 + 12 + 16 || blob[0] !== SEAL_VERSION) throw new Error('secrets: not a sealed key');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', masterKey, blob.subarray(1, 13));
+  decipher.setAuthTag(blob.subarray(blob.length - 16));
+  return Buffer.concat([decipher.update(blob.subarray(13, blob.length - 16)), decipher.final()]).toString('utf8');
+}
 
 function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[sidecar] ${m}`) }) {
   const unsupportedCalls = new Set();
@@ -32,6 +55,13 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
   }
   const ask = (method, params) => rpc.request(method, params).catch((err) => { log(`${method}: ${err.message}`); return { error: err.message }; });
   const tell = (method, params) => rpc.notify(method, params);
+
+  let masterKey = null; // Buffer, once init() has it; null: no key store, keys stay plain (as Electron without safeStorage)
+  let locked = Boolean(hello.locked); // the screen lock, from hello and then the events
+  let idle = 'active'; // the last idle state Rust gave
+  let idleAsked = 0;
+  const protocols = new Map(); // 'roblox' -> bool: which links an application is registered for
+  const protocolAsked = new Set();
 
   let userData = hello.paths.userData;
   let displays = hello.screens || [];
@@ -62,6 +92,8 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
     } else if (method === 'quit') {
       for (const fn of quitHandlers) { try { fn(); } catch (err) { log(`on quit: ${err.message}`); } }
     } else if (method === 'power') {
+      if (params.event === 'lock-screen') locked = true;
+      else if (params.event === 'unlock-screen') locked = false;
       power.emit(params.event);
     } else {
       log(`unknown notification ${method}`);
@@ -96,9 +128,35 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
     return handle;
   }
 
+  // what the synchronous methods answer from; to be awaited before the core is made
+  async function init() {
+    // a first use may make the system ask the person to allow it: given time to
+    const key = await rpc.request('secrets.masterKey', {}, { timeoutMs: 60000 }).catch((err) => { log(`secrets.masterKey: ${err.message}`); return { error: err.message }; });
+    if (key?.available && typeof key.key === 'string') {
+      const bytes = Buffer.from(key.key, 'base64');
+      if (bytes.length === 32) masterKey = bytes;
+      else log('secrets: the master key is not 256 bits; keys stay plain text');
+    } else {
+      log(`secrets: no system key store${key?.reason || key?.error ? ` (${key.reason || key.error})` : ''}; keys stay plain text in config.json`);
+    }
+    await Promise.all(['roblox://'].map(lookupProtocol));
+  }
+
+  function lookupProtocol(url) {
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(String(url))?.[1]?.toLowerCase();
+    if (!scheme) return Promise.resolve(false);
+    protocolAsked.add(scheme);
+    return ask('app.appForProtocol', { url: `${scheme}://` }).then((r) => {
+      const found = r === true;
+      protocols.set(scheme, found);
+      return found;
+    });
+  }
+
   return {
     id: 'sidecar',
     unsupported: unsupportedCalls,
+    init,
     onNotification,
     // the handlers the core registered (the dispatcher, sidecar/main.js, goes through core.dispatch)
     handlers: ipc,
@@ -136,7 +194,17 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       hideFromDock: () => {}, // Rust does it (Accessory policy) before any window
       setAppId: () => {},
       installAppMenu: () => {}, // TAURI-06
-      appForProtocol: () => unsupported('app.appForProtocol', false),
+      // synchronous in the contract: the answer is the one asked for earlier (init asks for roblox://),
+      // false for a link not asked about yet, which is asked now for the next time
+      appForProtocol: (url) => {
+        const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(String(url))?.[1]?.toLowerCase();
+        if (!scheme) return false;
+        if (!protocolAsked.has(scheme)) lookupProtocol(url);
+        return protocols.get(scheme) === true;
+      },
+      // the address of one of the user's sound files for her page: capri://usersounds/<file>, which
+      // Windows' webview sees as http://capri.localhost/<file> (Rust serves both, assets.rs)
+      userSoundUrl: (file) => `${process.platform === 'win32' ? 'http://capri.localhost/' : 'capri://usersounds/'}${encodeURIComponent(file)}`,
       setRenderMode: () => {},
       gpuStatus: () => ({}),
       serveAssets: () => {}, // Rust serves capri://usersounds/ from userData/sounds itself
@@ -155,18 +223,38 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       toDip: (rect) => rect, // macOS and Linux coordinates are DIPs already; Windows is TAURI-05
     }),
 
-    power: Object.assign(power, { getSystemIdleState: () => unsupported('power.getSystemIdleState', 'active') }),
+    // Electron's getSystemIdleState is synchronous: 'locked' from the lock events (and hello), else the
+    // last idle state Rust gave, which this call refreshes for the next one (at most once a second).
+    power: Object.assign(power, {
+      getSystemIdleState: (seconds = 60) => {
+        if (locked) return 'locked';
+        if (Date.now() - idleAsked > 1000) {
+          idleAsked = Date.now();
+          ask('power.idle', { threshold: seconds }).then((r) => { if (typeof r?.state === 'string') idle = r.state; });
+        }
+        return idle === 'locked' ? 'active' : idle;
+      },
+    }),
 
     secrets: {
-      isAvailable: () => unsupported('secrets.isAvailable', false),
-      encrypt: () => { throw new Error('secrets: not in the Tauri shell yet (TAURI-07)'); },
-      decrypt: () => { throw new Error('secrets: not in the Tauri shell yet (TAURI-07)'); },
+      // the core tells a sealed key by this prefix (setup.js createKeys): "kc:" here, "enc:" in Electron
+      prefix: 'kc',
+      isAvailable: () => masterKey !== null,
+      encrypt: (text) => {
+        if (!masterKey) throw new Error('secrets: no system key store');
+        return sealWith(masterKey, text);
+      },
+      decrypt: (buffer) => {
+        if (!masterKey) throw new Error('secrets: no system key store');
+        return openWith(masterKey, buffer);
+      },
     },
 
+    // links: http(s) and the launchers' own only, files and folders as they are (Rust checks, opener.rs)
     shell: {
-      openExternal: async () => unsupported('shell.openExternal'),
-      openPath: async () => { unsupported('shell.openPath'); return 'not in the Tauri shell yet (TAURI-07)'; },
-      showItemInFolder: () => unsupported('shell.showItemInFolder'),
+      openExternal: (url) => rpc.request('shell.openExternal', { url: String(url) }).then(() => {}),
+      openPath: (file) => ask('shell.openPath', { path: String(file) }).then((r) => (typeof r === 'string' ? r : r?.error || 'could not open it')),
+      showItemInFolder: (file) => { ask('shell.showItemInFolder', { path: String(file) }); },
     },
 
     shortcuts: {
@@ -174,9 +262,25 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       unregisterAll: () => {},
     },
 
-    capture: { screen: async () => unsupported('capture.screen', null) },
-    clipboard: { writeImage: async () => unsupported('clipboard.writeImage') },
-    dialogs: { pickFolder: async () => unsupported('dialogs.pickFolder', null) },
+    capture: {
+      // a Buffer (PNG, or JPEG at `quality`), null when there is no picture (no Screen Recording permission…)
+      screen: async (display, { width, height, format = 'png', quality = 72 } = {}) => {
+        const r = await rpc.request('capture.screen', { bounds: display?.bounds, width, height, format, quality }, { timeoutMs: 60000 }).catch((err) => {
+          log(`capture.screen: ${err.message}`);
+          return null;
+        });
+        return typeof r === 'string' ? Buffer.from(r, 'base64') : null;
+      },
+    },
+    clipboard: {
+      writeImage: (png) => rpc.request('clipboard.writeImage', { png: Buffer.from(png).toString('base64') }, { timeoutMs: 20000 }).then(() => {}),
+      writeText: (text) => rpc.request('clipboard.writeText', { text: String(text) }).then(() => {}),
+    },
+    // waits as long as the person does
+    dialogs: {
+      pickFolder: (defaultPath) => rpc.request('dialogs.pickFolder', { default: defaultPath || null }, { timeoutMs: 60 * 60 * 1000 })
+        .then((r) => (typeof r === 'string' ? r : null), (err) => { log(`dialogs.pickFolder: ${err.message}`); return null; }),
+    },
 
     tray: {
       create: () => {
@@ -225,4 +329,4 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
   };
 }
 
-module.exports = { createSidecarPlatform };
+module.exports = { createSidecarPlatform, sealWith, openWith };

@@ -17,7 +17,10 @@ const { spawn: nodeSpawn } = require('node:child_process');
 // From the repository: bin/ next to this file (scripts/build-mac-helper.js). In the packaged app it
 // is outside the app archive, in the bundle's Resources/bin (package.json build.mac.extraResources),
 // so no other platform's package carries it.
-function helperPath(dir = __dirname, resources = process.resourcesPath) {
+// In the Tauri build the core runs as a bundled sidecar with no real source folder: it is told where
+// the app's resources are (CAPRI_RESOURCES, sidecar/main.js), and the helper sits in <resources>/bin.
+function helperPath(dir = __dirname, resources = process.resourcesPath, env = process.env) {
+  if (env.CAPRI_RESOURCES) return path.join(env.CAPRI_RESOURCES, 'bin', 'capri-windows');
   const packaged = dir.split(path.sep).some((part) => part === 'app.asar' || part === 'app.asar.unpacked');
   return packaged && resources ? path.join(resources, 'bin', 'capri-windows') : path.join(dir, 'bin', 'capri-windows');
 }
@@ -83,7 +86,7 @@ const emptyUpdate = () => ({ fg: null, taskbar: false, ai: [], game: null, usb: 
 // earned back, which is also how a helper that gave up gets one more chance after a system event,
 // never in a loop of its own.
 function startMacWindowWatch({
-  overlay, onUpdate, onState = () => {}, helper = HELPER, spawn = nodeSpawn, log = console.error, excludeOwnProcess = false,
+  overlay, onUpdate, onState = () => {}, helper = helperPath(), spawn = nodeSpawn, log = console.error, excludeOwnProcess = false,
 }) {
   const idle = { available: false, stop() {}, refresh() {}, pause() {}, resume() {} };
   if (!fs.existsSync(helper)) {
