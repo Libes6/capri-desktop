@@ -63,7 +63,8 @@ async function main() {
   await platform.init(); // the key store's master key and the like: the synchronous methods answer from it
   // CAPRI_DEBUG=1: the dev routes of the bridge (debug.js); Rust honours its own debug requests on the same variable
   const dev = Boolean(process.env.CAPRI_DEBUG);
-  const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined, dev });
+  // CAPRI_DEV=1: the core's dev switches too (CAPRI_SCREENS=2 cuts one display in two halves for testing)
+  const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined, dev: dev || process.env.CAPRI_DEV === '1' });
 
   // The one door in (src/main/dispatch.js): a refusal is a ProtocolError, never a crash. A command that
   // sends and expects nothing back just logs.

@@ -97,7 +97,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
   // Rust pushes: the screens when they change, the pointer when it moves, a second launch, a quit request
   function onNotification(method, params) {
     if (method === 'screens') {
-      displays = params.list || displays;
+      if (Array.isArray(params.list) && params.list.length) displays = params.list; // never none: the core needs a screen
       screens.emit('display-metrics-changed');
     } else if (method === 'cursor') {
       cursor = params;
@@ -290,7 +290,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
 
     screens: Object.assign(screens, {
       all: () => displays,
-      primary: () => displays[0],
+      primary: () => displays.find((d) => d.primary) || displays[0],
       nearest: (point) => displays.find((d) => inside(point, d.bounds)) || [...displays].sort((a, b) => dist(point, a.bounds) - dist(point, b.bounds))[0],
       cursor: () => cursor,
       toDip: (rect) => rect, // macOS and Linux coordinates are DIPs already; Windows is TAURI-05
