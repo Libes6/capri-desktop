@@ -1,6 +1,12 @@
 {
   "bundle": {
     "active": true,
-    "externalBin": ["binaries/capri-sidecar"]
+    "externalBin": [
+      "binaries/capri-sidecar"
+    ],
+    "macOS": {
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist"
+    }
   }
 }

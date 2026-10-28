@@ -9,7 +9,10 @@
 // transport: electron-updater's autoUpdater for Windows (NSIS) and the AppImage, the same check
 // without download for a .deb (her package manager updates her), and on macOS electron-updater's
 // check with our own verified download and bundle swap (mac-update.js), since Squirrel.Mac refuses
-// an update without a Developer ID signature. No Electron in the controller: it is tested with fakes.
+// an update without a Developer ID signature. In the Tauri build (TAURI-10, docs/TAURI_UPDATES.md) the
+// transport is tauri-plugin-updater, driven by Rust: signed latest.json feed, minisign-verified
+// download, the plugin replaces the app (macOS .app.tar.gz, NSIS, AppImage). No Electron in the
+// controller: it is tested with fakes.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -51,7 +54,11 @@ function updateError(err, extra = {}) {
   const code = String(err?.code ?? '');
   let category = 'other';
   let reason = null;
-  if (code === 'ERR_CHECKSUM_MISMATCH' || /sha512|sha256|checksum|signature|code ?sign|integrity|bundle (id|version|check)/i.test(message)) {
+  if (code === 'ERR_CAPRI_SIGNATURE') {
+    category = 'signature';
+  } else if (code === 'ERR_CAPRI_NETWORK') {
+    category = 'network';
+  } else if (code === 'ERR_CHECKSUM_MISMATCH' || /sha512|sha256|checksum|signature|code ?sign|integrity|bundle (id|version|check)/i.test(message)) {
     category = 'signature';
   } else if (/net::|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|socket hang up|timed? ?out|offline|network|status code 5\d\d|\b50[234]\b/i.test(message)
     || /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN)$/.test(code)) {
@@ -61,6 +68,8 @@ function updateError(err, extra = {}) {
   } else if (['ERR_UPDATER_LATEST_VERSION_NOT_FOUND', 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND', 'ERR_UPDATER_NO_PUBLISHED_VERSIONS'].includes(code)) {
     reason = 'feed'; // nothing published with update files yet (or a release without them)
   }
+  // the Tauri shell says why itself (feed: nothing published for this system, location: cannot replace the app)
+  if (!reason && ['feed', 'location'].includes(err?.reason)) reason = err.reason;
   return { kind: 'error', error: message, category, ...(reason && { reason }), ...extra };
 }
 
@@ -267,6 +276,29 @@ function macTransport(updater, installer) {
   };
 }
 
+// Tauri (TAURI-10): the shell checks the signed feed, downloads (minisign-verified before it says
+// done) and installs; platform/sidecar.js gives `api` = { status, check, download(progress), install }.
+// A package (.deb): the check only. After install() macOS and Linux start the new app by relaunch();
+// on Windows the installer ends this process by itself.
+function tauriTransport(api, { notify = false, relaunch = () => {} } = {}) {
+  return {
+    async check() {
+      const found = await api.check();
+      if (!found) return null;
+      const offer = { version: found.version, notes: found.notes, tag: null };
+      if (notify) return offer;
+      return {
+        ...offer,
+        download: (progress) => api.download(progress),
+        async install() {
+          await api.install();
+          relaunch();
+        },
+      };
+    },
+  };
+}
+
 // --- Where updates can work -------------------------------------------------------------------
 
 // The feed the build was made with (resources/app-update.yml, written by electron-builder from
@@ -308,6 +340,7 @@ function updateMode({ platform, packaged, smoke = false, env = {}, feed }) {
  * Returns the controller, plus page() and the startup check scheduled.
  */
 function startUpdates({ platform, smoke = false, onChange = () => {}, log = (line) => console.log(`[capri] update: ${line}`) }) {
+  if (platform.updater.transport === 'tauri') return startTauriUpdates({ platform, smoke, onChange, log });
   const packaged = platform.app.isPackaged();
   const testBuild = Boolean(packaged && safeRequire(path.join(platform.paths.get('appPath'), 'package.json'))?.capriUpdaterTest === true);
   const feed = packaged ? readFeed(path.join(platform.paths.get('resources'), 'app-update.yml'), { testBuild }) : null;
@@ -350,6 +383,48 @@ function startUpdates({ platform, smoke = false, onChange = () => {}, log = (lin
   return controller;
 }
 
+// The Tauri build: Rust says (status) whether this installation updates: a provisioned bundle with a
+// public key and https endpoints, no dev run, an AppImage or a package on Linux.
+function startTauriUpdates({ platform, smoke, onChange, log }) {
+  const current = platform.app.version();
+  const { tauri: api } = platform.updater.get();
+  const status = api.status || { mode: 'disabled', reason: 'dev' };
+  if (smoke || status.mode === 'disabled') {
+    const reason = smoke ? 'smoke' : status.reason || 'feed';
+    log(`disabled (${reason})`);
+    return new UpdateController({ disabled: reason, current, onChange });
+  }
+  const mode = status.mode === 'notify' ? 'notify' : 'install';
+  const transport = tauriTransport(api, { notify: mode === 'notify', relaunch: () => platform.app.relaunch() });
+  // a local test build also writes its lines to a file: the app it relaunches does not share our pipes
+  const logFile = status.test ? process.env.CAPRI_UPDATER_SMOKE_LOG : null;
+  if (logFile) {
+    const say = log;
+    log = (line) => {
+      say(line);
+      try { fs.appendFileSync(logFile, `update: ${line}\n`); } catch { /* the test's to notice */ }
+    };
+  }
+  const controller = new UpdateController({ transport, mode, current, onChange, log });
+  log(`tauri ${mode} ${current} (${status.test ? 'local test feed' : `github ${OWNER}/${REPO}`})`);
+  // a local test build (scripts/updater-smoke-tauri.js; Rust says `test` only for a binary compiled for it) can run
+  // the steps it is given, with the restart confirmed, instead of waiting for her settings window
+  const steps = status.test ? String(process.env.CAPRI_UPDATER_SMOKE_STEPS || '').split(',').filter(Boolean) : [];
+  if (steps.length) {
+    (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      for (const step of steps) {
+        if (step === 'check') await controller.check();
+        else if (step === 'download') await controller.download();
+        else if (step === 'install') await controller.install(async () => true);
+      }
+    })().catch((err) => log(`smoke steps: ${redact(err?.message ?? err)}`));
+    return controller;
+  }
+  setTimeout(() => controller.status.kind === 'idle' && controller.check(), STARTUP_DELAY).unref?.();
+  return controller;
+}
+
 function safeRequire(file) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -368,6 +443,7 @@ module.exports = {
   updaterTransport,
   notifyTransport,
   macTransport,
+  tauriTransport,
   readFeed,
   updateMode,
   startUpdates,
