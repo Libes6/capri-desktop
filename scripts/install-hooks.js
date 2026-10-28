@@ -142,12 +142,20 @@ function migrate(bin) {
   return hooksCommand.migrateFile(settingsPath(), 'claude', bin);
 }
 
-module.exports = { install, uninstall, status, migrate, EVENTS };
+// The way back to the Electron build: `capri-hook` entries become this build's Node/Electron command.
+function revert() {
+  return hooksCommand.revertFile(settingsPath(), 'claude', () => legacyCommand());
+}
+
+module.exports = { install, uninstall, status, migrate, revert, EVENTS };
 
 if (require.main === module) {
   const arg = process.argv[2];
   try {
-    if (arg === '--uninstall') {
+    if (arg === '--revert') {
+      const r = revert();
+      console.log(r.reverted ? `${r.reverted} Capri hook commands put back to the Node/Electron form in ${r.file}` : `Nothing to put back in ${r.file}`);
+    } else if (arg === '--uninstall') {
       const r = uninstall();
       console.log(r.removed ? `Capri hooks removed from ${r.file}` : `No Capri hooks found in ${r.file}`);
     } else if (arg === '--status') {

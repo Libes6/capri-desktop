@@ -73,6 +73,9 @@ function main() {
     platform.app.serveAssets({ userSoundsDir: core.userSoundsDir });
     registerIpc();
     core.start({ debug: DEV ? createDebugHandler({ core, platform, root: ROOT, dev: DEV }) : null });
+    // the keys sealed for the Tauri build to take over (TAURI-09): in the background, never in the way. Not in
+    // --dev unless a test key store service is named (a developer's run must not touch the real Keychain item).
+    if (!SMOKE && (!DEV || process.env.CAPRI_KEYCHAIN_SERVICE)) setTimeout(() => core.prepareTauriMigration().then((r) => r.ok || console.log(`[capri] Tauri migration: ${r.skipped}`)), 8000).unref();
   });
 
   platform.app.onQuit(() => core.stop());

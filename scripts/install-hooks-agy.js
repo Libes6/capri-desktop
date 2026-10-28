@@ -151,7 +151,12 @@ function migrate(bin) {
   return hooksCommand.migrateFile(settingsPath(), 'agy', bin);
 }
 
-module.exports = { install, uninstall, status, migrate, EVENTS };
+// The way back to the Electron/Node build: `capri-hook` entries become this build's Node/Electron command.
+function revert() {
+  return hooksCommand.revertFile(settingsPath(), 'agy', (eventType) => legacyCommand(eventType));
+}
+
+module.exports = { install, uninstall, status, migrate, revert, EVENTS };
 
 if (require.main === module) {
   const arg = process.argv[2];

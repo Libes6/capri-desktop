@@ -19,7 +19,7 @@ The platform's `secrets.encrypt/decrypt` are synchronous, so a call to Rust per 
 kc:<base64( 0x01 | 12-byte nonce | AES-256-GCM ciphertext | 16-byte tag )>
 ```
 
-Electron's safeStorage values are `enc:<base64>`. `setup.js createKeys` takes the prefix from `platform.secrets.prefix` (`kc` here, `enc` by default) and reads a key sealed by the other kind as empty: never as a plain key, never as ciphertext handed to a provider. Migrating `enc:` to `kc:` is TAURI-09 (decrypt in the last Electron version, `sealKey` in the Tauri one, or enter again). The keys never reach her pages (the dispatcher's views strip them as before) or any log; the master key goes over the pipe to the sidecar only, and nowhere else.
+Electron's safeStorage values are `enc:<base64>`. `setup.js createKeys` takes the prefix from `platform.secrets.prefix` (`kc` here, `enc` by default) and reads a key sealed by the other kind as empty: never as a plain key, never as ciphertext handed to a provider. Migrating `enc:` to `kc:` is done (TAURI-09, `docs/TAURI_MIGRATION_DATA.md`): the last Electron version seals the keys under this master key into `tauri-keys.json`, the Tauri build verifies and takes them, or the user enters them again. The keys never reach her pages (the dispatcher's views strip them as before) or any log; the master key goes over the pipe to the sidecar only, and nowhere else.
 
 No key store (a Linux without Secret Service, the keychain denied or locked, a store that does not keep what it is given): `isAvailable()` is false and the core does what it does in Electron without safeStorage: keys stay plain text in config.json. `CAPRI_KEYCHAIN_SERVICE=<name>` uses another service name (tests, try-outs), so the real item is never touched.
 
