@@ -1,0 +1,34 @@
+# Running the Tauri build (TAURI-04)
+
+Needs Rust (stable, 1.90 or newer) and Node 22. No `@tauri-apps/cli`: the shell is a plain Cargo project in `src-tauri/`.
+
+```
+npm run tauri:dev      # stage her pages, cargo build, run the app; the core runs as `node sidecar/main.js`
+npm run tauri:build    # stage, build the sidecar executable (Node SEA), cargo build --release
+npm run tauri:test     # cargo test (RPC layer, sidecar supervisor, user-sound protocol)
+npm run tauri:stage    # only the pages     npm run tauri:sidecar    # only the sidecar executable
+```
+
+Her pages are Tauri's `frontendDist` (`src-tauri/frontend/`, generated, not committed): `scripts/stage-frontend.js` copies `src/renderer`, `assets` and the font files her styles name, keeping the repository layout, so the relative paths (`../../assets/...`, `../../../node_modules/@fontsource/...`) work as they do in Electron. They are embedded when Cargo builds: **a change to a page needs `npm run tauri:dev` again** (it restages, Cargo rebuilds only what changed).
+
+## Where things go
+
+- Rust's build folder is Cargo's `target/`: set `CARGO_TARGET_DIR` to keep it outside the repository (`src-tauri/target/` is ignored by git anyway).
+- Her data: `~/Library/Application Support/capri.desktop` (the identifier's folder; Electron's was `Capri`, moving it is TAURI-09). **`CAPRI_USER_DATA=<dir>` uses another profile**: use it for every try-out, with `CAPRI_PORT=<port>` for the hooks bridge (47823 by default, the real Capri's). Nothing else is written: no Login Items (autostart is not in the shell yet).
+- `CAPRI_NODE` names the `node` that runs the sidecar when it is not on the GUI's PATH (an nvm node). `CAPRI_SIDECAR=<executable>` runs that file as the sidecar instead (the SEA one). `CAPRI_ROOT` is the project folder (set by `tauri:dev`).
+- Debug: with `CAPRI_DEBUG_STDIN=1` each line on stdin is JavaScript run in her page (the result is printed as `[eval] ...`); `!sidecar` prints its pid and state, `!kill` kills it (to see it come back), `!exit` quits.
+
+## Trying it
+
+```
+export CARGO_TARGET_DIR=$HOME/capri-target
+CAPRI_USER_DATA=$(mktemp -d) CAPRI_PORT=47955 npm run tauri:dev
+curl -s localhost:47955/health                       # the core is up
+curl -s -X POST localhost:47955/event -H 'content-type: application/json' -d '{"hook_event_name":"UserPromptSubmit","session_id":"t","prompt":"hi"}'
+```
+
+On macOS she has no Dock icon (Accessory policy); the overlay window is level 1000 on all Spaces. The hit test is a pointer poll in Rust (25 Hz) that feeds her page synthetic `mousemove` events, so `app.js` is unchanged; `docs/TAURI_SPIKE.md` says why.
+
+## Windows and Linux
+
+Written but never run: the Rust and Node code is portable (`cfg(target_os)` only for the macOS window flags and the pointer read), the sidecar build has the platform branches. CI is TAURI-12. Known gaps there: mixed-DPI coordinates (the cursor and monitor positions are divided by one scale), `capri://usersounds/` is `http://capri.localhost/` on Windows (the core's URLs need a platform-made base).

@@ -3,8 +3,8 @@
 //! polish (chat focus, screens, hover) is TAURI-05.
 //!
 //! Click-through without `forward: true`: while a Tauri window ignores the cursor its page gets no
-//! mouse event at all. So a thread reads the pointer (25 Hz) and, while the window is click-through
-//! and the pointer is over it, hands the page a synthetic `mousemove` at that spot. The page's own
+//! mouse event at all (and a non-key window gets no mouse-moved events either). So a thread reads the
+//! pointer (25 Hz) and, while the pointer is over the window, hands the page a synthetic `mousemove` at that spot. The page's own
 //! logic (app.js: alpha-mask hit test, then `setInteractive`) is unchanged: it answers through the
 //! core, which calls `overlay.clickThrough`, and that flips the window here. The pointer is also
 //! pushed to the core (platform.screens.cursor() is synchronous there).
@@ -124,7 +124,9 @@ pub fn create(app: &AppHandle, area: Rect) -> Result<Rect, String> {
 }
 
 pub fn click_through(app: &AppHandle, on: bool) {
-    IGNORING.store(on, Ordering::SeqCst);
+    if IGNORING.swap(on, Ordering::SeqCst) != on {
+        println!("[capri] overlay click-through={on}");
+    }
     if let Ok(win) = window(app) {
         let _ = win.set_ignore_cursor_events(on);
     }
@@ -244,7 +246,9 @@ pub fn start_poll(app: AppHandle, push: impl Fn(&str, Value) + Send + 'static) {
                     push("cursor", json!({"x": x, "y": y}));
                     last_sent = std::time::Instant::now();
                 }
-                if moved && IGNORING.load(Ordering::Relaxed) {
+                // also while she takes clicks: an app that is not the active one gets no mouse-moved events
+                // on a window that is not key, so the page would never hear the pointer leave her
+                if moved {
                     let (ox, oy) = *CACHE.origin.lock().unwrap();
                     let (w, h) = *CACHE.size.lock().unwrap();
                     let (cx, cy) = (x - ox, y - oy);

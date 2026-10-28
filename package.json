@@ -29,7 +29,12 @@
     "updater:smoke": "node scripts/updater-smoke.js",
     "dist:win": "electron-builder --win --x64 --publish never",
     "dist:linux": "electron-builder --linux --x64 --publish never",
-    "dist:mac": "electron-builder --mac --arm64 --publish never"
+    "dist:mac": "electron-builder --mac --arm64 --publish never",
+    "tauri:stage": "node scripts/stage-frontend.js",
+    "tauri:sidecar": "node scripts/build-sidecar.js",
+    "tauri:dev": "node scripts/tauri.js dev",
+    "tauri:build": "node scripts/tauri.js build",
+    "tauri:test": "node scripts/tauri.js test"
   },
   "keywords": [
     "claude-code",

@@ -26,7 +26,6 @@ use sidecar::{Handler, RestartPolicy, Sidecar};
 fn invoke_timeout() -> Duration {
     Duration::from_millis(std::env::var("CAPRI_INVOKE_TIMEOUT_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(15 * 60 * 1000))
 }
-const CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
 
 static USER_DATA: OnceLock<PathBuf> = OnceLock::new();
 
@@ -160,6 +159,41 @@ fn sidecar_command() -> Command {
     c
 }
 
+/// CAPRI_DEBUG_STDIN=1 (tests, a look inside): each line of stdin is run as JavaScript in her page and
+/// the result printed as `[eval] ...`; a line `!sidecar` prints the sidecar's pid and state, `!kill`
+/// kills the sidecar (to watch it come back), `!exit` ends the app.
+fn debug_stdin(app: AppHandle) {
+    use std::io::BufRead;
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+            let sidecar = app.state::<Sidecar>();
+            match line.as_str() {
+                "!sidecar" => println!("[debug] sidecar pid={:?} state={:?}", sidecar.pid(), sidecar.state()),
+                "!kill" => {
+                    if let Some(pid) = sidecar.pid() {
+                        let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+                    }
+                }
+                "!exit" => app.exit(0),
+                js => {
+                    if let Some(w) = app.get_webview_window(overlay::LABEL) {
+                        let _ = w.eval_with_callback(js, |r| println!("[eval] {r}"));
+                    }
+                }
+            }
+        }
+    });
+}
+
+fn start_core(app: &AppHandle) {
+    let bridge = Arc::new(Bridge { app: app.clone(), sidecar: OnceLock::new() });
+    let sidecar = Sidecar::start(sidecar_command, bridge.clone(), RestartPolicy::new(5, Duration::from_secs(60), Duration::from_millis(200)));
+    bridge.sidecar.set(sidecar.clone()).ok();
+    app.manage(sidecar);
+    let pusher = bridge.clone();
+    overlay::start_poll(app.clone(), move |method, params| pusher.push(method, params));
+}
+
 pub fn run() {
     let app = tauri::Builder::default()
         // first: a second launch is told to the core, which brings her status up (main.js did the same)
@@ -186,20 +220,18 @@ pub fn run() {
             std::fs::create_dir_all(&user_data)?;
             USER_DATA.set(user_data).ok();
 
-            let bridge = Arc::new(Bridge { app: app.handle().clone(), sidecar: OnceLock::new() });
-            let sidecar = Sidecar::start(sidecar_command, bridge.clone(), RestartPolicy::new(5, Duration::from_secs(60), Duration::from_millis(200)));
-            bridge.sidecar.set(sidecar.clone()).ok();
-            app.manage(sidecar.clone());
-
-            let pusher = bridge.clone();
-            overlay::start_poll(app.handle().clone(), move |method, params| pusher.push(method, params));
-            let _ = CONTROL_TIMEOUT;
+            if std::env::var_os("CAPRI_DEBUG_STDIN").is_some() {
+                debug_stdin(app.handle().clone());
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building the Capri shell");
 
     app.run(|app, event| match event {
+        // the core starts once the event loop runs: its first question (hello) asks for the screens,
+        // which Tauri answers only from the loop
+        RunEvent::Ready => start_core(app),
         // she has no window to speak of: closing the last one does not end her
         RunEvent::ExitRequested { api, code, .. } if code.is_none() => api.prevent_exit(),
         RunEvent::Exit => {

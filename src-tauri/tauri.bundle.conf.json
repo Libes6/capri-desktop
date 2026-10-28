@@ -1,0 +1,6 @@
+{
+  "bundle": {
+    "active": true,
+    "externalBin": ["binaries/capri-sidecar"]
+  }
+}
