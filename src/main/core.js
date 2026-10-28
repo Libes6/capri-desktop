@@ -7,7 +7,10 @@
 //
 //   const core = createCore({ platform, port, dev, smoke, notify })
 //   (watchWindows: another window watcher than windows.js's, for the tests)
-//   core.ipc.on / core.ipc.handle   channel -> fn(arg, sender), registered by the shell
+//   core.ipc.on / core.ipc.handle   channel -> fn(arg, sender): the handlers themselves
+//   core.dispatch                   the door of her pages (dispatch.js): handle(name, args, sender) and
+//                                   handleChannel(channel, payload, sender) check the window, the arguments
+//                                   against src/protocol.js, then call the handler. The shell registers these.
 //   core.start({ debug })           once the platform is ready: windows, tray, watchers, bridge
 //   core.stop()                     on quit
 // `notify.rendererReady()` / `notify.settingsReady(info)`: the shell hears of the pages saying they are up.
@@ -26,6 +29,7 @@ const { watchPower } = require('./power');
 const { createCapabilities } = require('./capabilities');
 const { settingsView } = require('./settings-view');
 const { startUpdates, isReleasePage } = require('./updates');
+const { createDispatcher } = require('./dispatch');
 const settingsPatch = require('./settings-patch');
 const llm = require('./llm');
 const ollama = require('./ollama');
@@ -936,9 +940,16 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     else item.click(item);
   }
 
+  // which of her windows a message comes from (the dispatcher lets a command in from its own window only)
+  const dispatch = createDispatcher({
+    handlers: ipc,
+    scopeOf: (sender) => (settings?.owns(sender) ? 'settings' : overlay?.owns?.(sender) ? 'overlay' : null),
+  });
+
   return {
     config,
     ipc,
+    dispatch,
     start,
     stop,
     applyRender,
