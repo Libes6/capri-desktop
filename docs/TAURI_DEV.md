@@ -27,7 +27,9 @@ curl -s localhost:47955/health                       # the core is up
 curl -s -X POST localhost:47955/event -H 'content-type: application/json' -d '{"hook_event_name":"UserPromptSubmit","session_id":"t","prompt":"hi"}'
 ```
 
-On macOS she has no Dock icon (Accessory policy); the overlay window is level 1000 on all Spaces. The hit test is a pointer poll in Rust (25 Hz) that feeds her page synthetic `mousemove` events, so `app.js` is unchanged; `docs/TAURI_SPIKE.md` says why.
+On macOS she has no Dock icon (Accessory policy); the overlay window is level 1000 on all Spaces. The hit test is a pointer poll in Rust (25 Hz while the pointer moves, slower at rest; `overlay/pointer.rs`) that feeds her page synthetic `mousemove` events, so `app.js` is unchanged; `docs/TAURI_SPIKE.md` (TAURI-05) says why and what was measured.
+
+For trying the overlay: `CAPRI_DEV=1 CAPRI_SCREENS=2` makes the core cut one screen into two halves (to try `screens:move` and follow without a second monitor); `CAPRI_TRACE_POINTER=1` prints the pointer's way to the click-through switch and the poll's cost; `CAPRI_POLL_FIXED=1` keeps the poll at its fast rate; on stdin (`CAPRI_DEBUG_STDIN=1`) `!win` prints the overlay's state (level, Spaces flags, key, click-through) and `!top` puts it back on top. `node scripts/perf-probe-tauri.js --pid <capri pid> --secs 60` is the idle CPU/GPU probe (macOS).
 
 ## Windows and Linux
 

@@ -46,7 +46,7 @@ async function main() {
 
   const hello = await peer.request('hello', {});
   platform = createSidecarPlatform({ rpc: peer, hello, root, log });
-  const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined });
+  const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined, dev: process.env.CAPRI_DEV === '1' });
 
   // The one door in (src/main/dispatch.js): a refusal is a ProtocolError, never a crash. A command that
   // sends and expects nothing back just logs.

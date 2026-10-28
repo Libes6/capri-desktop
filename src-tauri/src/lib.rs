@@ -62,7 +62,7 @@ impl Bridge {
         let resources = path(p.resource_dir());
         let root = repo_root().map(|r| r.to_string_lossy().into_owned());
         let packaged = false; // until TAURI-12/13: the updater and the feed are Electron's
-        let (screens, cursor) = (overlay::screens(app), json!({"x": 0, "y": 0}));
+        let (screens, cursor) = (overlay::screens_for_hello(app), overlay::cursor_json(app));
         json!({
             "name": app.config().product_name.clone().unwrap_or_else(|| "Capri".into()),
             "identifier": app.config().identifier,
@@ -161,7 +161,7 @@ fn sidecar_command() -> Command {
 
 /// CAPRI_DEBUG_STDIN=1 (tests, a look inside): each line of stdin is run as JavaScript in her page and
 /// the result printed as `[eval] ...`; a line `!sidecar` prints the sidecar's pid and state, `!kill`
-/// kills the sidecar (to watch it come back), `!exit` ends the app.
+/// kills the sidecar (to watch it come back), `!win` prints the overlay window's state, `!exit` ends the app.
 fn debug_stdin(app: AppHandle) {
     use std::io::BufRead;
     std::thread::spawn(move || {
@@ -175,6 +175,8 @@ fn debug_stdin(app: AppHandle) {
                     }
                 }
                 "!exit" => app.exit(0),
+                "!win" => overlay::debug_state(&app),
+                "!top" => overlay::keep_on_top(&app),
                 js => {
                     if let Some(w) = app.get_webview_window(overlay::LABEL) {
                         let _ = w.eval_with_callback(js, |r| println!("[eval] {r}"));
