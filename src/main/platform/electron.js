@@ -51,6 +51,8 @@ function createElectronPlatform({ electron = require('electron'), root, dev = fa
       focus: () => win.focus(),
       blur: () => win.blur(),
       isAlive: () => !win.isDestroyed(),
+      // whether an IPC message comes from her page (the settings window has its own)
+      owns: (sender) => !win.isDestroyed() && sender === win.webContents,
       nativeHandle: () => win.getNativeWindowHandle(),
       mediaSourceId: () => win.getMediaSourceId(),
       // a picture of that part of the window (all of it without a rect), PNG; null when it is empty

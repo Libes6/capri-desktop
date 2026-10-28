@@ -59,7 +59,7 @@ const SHAPE = {
 // The window she lives in. bounds are { x, y, width, height } in screen DIPs.
 const OVERLAY_API = [
   'bounds', 'setBounds', 'send', 'clickThrough', 'keepOnTop', 'raise', 'setFocusable', 'focus', 'blur',
-  'isAlive', 'nativeHandle', 'mediaSourceId', 'capture',
+  'isAlive', 'owns', 'nativeHandle', 'mediaSourceId', 'capture',
 ];
 // Her tray icon. The menu is data (a template of { label, type, checked, enabled, accelerator, click,
 // submenu }, tray-menu.js); popup(where) opens the last one set, over 'overlay' or 'settings'.

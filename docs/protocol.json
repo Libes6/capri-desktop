@@ -1,0 +1,1647 @@
+{
+  "version": 1,
+  "scopes": [
+    "overlay",
+    "settings"
+  ],
+  "commands": [
+    {
+      "name": "rendererReady",
+      "channel": "renderer:ready",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "The overlay page is up (a reload too): the core sends the power state."
+    },
+    {
+      "name": "setInteractive",
+      "channel": "overlay:interactive",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [
+        {
+          "name": "on",
+          "type": "boolean",
+          "coerce": "boolean",
+          "optional": true,
+          "doc": "true: the overlay takes clicks; false: they go through"
+        }
+      ],
+      "pack": "first",
+      "reply": null,
+      "doc": "Click-through off or on, from where the pointer is on her."
+    },
+    {
+      "name": "rearm",
+      "channel": "overlay:rearm",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "The pointer moved over her and she never heard of it: click-through is armed again."
+    },
+    {
+      "name": "cursor",
+      "channel": "overlay:cursor",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "inside": {
+            "type": "boolean"
+          },
+          "display": {
+            "type": "number"
+          }
+        }
+      },
+      "doc": "The pointer in overlay coordinates, whether it is inside her window, and the display it is on."
+    },
+    {
+      "name": "screens",
+      "channel": "screens:list",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "current": {
+            "type": "number"
+          },
+          "origin": {
+            "type": "object",
+            "props": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            }
+          },
+          "list": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "props": {
+                "id": {
+                  "type": "number"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "w": {
+                  "type": "number"
+                },
+                "h": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "doc": "Your screens (their bounds), the one she is on, and where her window is."
+    },
+    {
+      "name": "moveScreen",
+      "channel": "screens:move",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "id",
+          "type": "number",
+          "int": true,
+          "doc": "the display id from screens"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "origin": {
+            "type": "object",
+            "props": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            }
+          },
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
+          },
+          "gap": {
+            "type": "number"
+          }
+        },
+        "nullable": true
+      },
+      "doc": "Her window goes to that screen; null when there is no such screen."
+    },
+    {
+      "name": "getConfig",
+      "channel": "config:get",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "keys": {
+            "type": "array"
+          }
+        }
+      },
+      "doc": "Her config as the overlay sees it (API keys left out, `keys`: the providers that have one)."
+    },
+    {
+      "name": "setConfig",
+      "channel": "config:set",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "patch",
+          "type": "object",
+          "props": {},
+          "doc": "the keys to change"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "Saves a part of the config, answers the new config (the overlay is sent capri:config too)."
+    },
+    {
+      "name": "listSounds",
+      "channel": "sounds:list",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "props": {
+            "name": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "doc": "Your own sounds (the sounds folder of her data)."
+    },
+    {
+      "name": "hooksStatus",
+      "channel": "hooks:status",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "Whether the assistant's hooks are installed."
+    },
+    {
+      "name": "demoWindow",
+      "channel": "demo:window",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "coerce": "boolean",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "boolean"
+      },
+      "doc": "Opens or closes the demo terminal she perches on; false when windows are not tracked."
+    },
+    {
+      "name": "openMenu",
+      "channel": "menu:open",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "Right-clicking her: the tray's menu where the pointer is."
+    },
+    {
+      "name": "installHooks",
+      "channel": "hooks:install",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "Installs the assistant's hooks (her welcome panel)."
+    },
+    {
+      "name": "claudeFound",
+      "channel": "claude:found",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "boolean"
+      },
+      "doc": "Whether Claude Code's folder exists."
+    },
+    {
+      "name": "openClaudeHelp",
+      "channel": "claude:help",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "Opens the assistant's help page in the browser."
+    },
+    {
+      "name": "windowsNow",
+      "channel": "windows:get",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {},
+        "nullable": true
+      },
+      "doc": "The last windows update (what the watcher saw), null before the first."
+    },
+    {
+      "name": "trayPlace",
+      "channel": "guide:tray",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "icon": {
+            "type": "object",
+            "props": {},
+            "nullable": true
+          },
+          "corner": {
+            "type": "object",
+            "props": {}
+          }
+        }
+      },
+      "doc": "Where her tray icon is, in overlay coordinates, and the corner by the clock."
+    },
+    {
+      "name": "openClaudeFolder",
+      "channel": "guide:claudeFolder",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "found": {
+            "type": "boolean"
+          },
+          "dir": {
+            "type": "string"
+          },
+          "file": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "Shows Claude Code's folder, its settings file selected."
+    },
+    {
+      "name": "copyImage",
+      "channel": "panel:copy",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "rect",
+          "type": "object",
+          "props": {
+            "x": {
+              "type": "number",
+              "required": true
+            },
+            "y": {
+              "type": "number",
+              "required": true
+            },
+            "width": {
+              "type": "number",
+              "required": true
+            },
+            "height": {
+              "type": "number",
+              "required": true
+            }
+          },
+          "doc": "the part of the overlay, in pixels"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "boolean"
+      },
+      "doc": "A picture of that part of the overlay, on the clipboard."
+    },
+    {
+      "name": "chatStatus",
+      "channel": "chat:status",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "boolean"
+          },
+          "local": {
+            "type": "boolean"
+          },
+          "warmup": {
+            "type": "boolean"
+          }
+        }
+      },
+      "doc": "Is the AI there, with a model to talk with."
+    },
+    {
+      "name": "chatSend",
+      "channel": "chat:send",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "request",
+          "type": "object",
+          "props": {
+            "id": {
+              "type": "string",
+              "max": 100,
+              "required": true
+            },
+            "messages": {
+              "type": "array",
+              "required": true,
+              "max": 500,
+              "items": {
+                "type": "object",
+                "props": {
+                  "role": {
+                    "type": "string",
+                    "max": 20,
+                    "required": true,
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  },
+                  "content": {
+                    "type": "string",
+                    "max": 200000,
+                    "required": true
+                  }
+                }
+              }
+            }
+          },
+          "doc": "a turn: its id, the conversation"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "doc": "Her answer; it is streamed to the overlay as chat:delta { id, text } meanwhile."
+    },
+    {
+      "name": "chatStop",
+      "channel": "chat:stop",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "max": 100,
+          "doc": "the turn to stop"
+        }
+      ],
+      "pack": "first",
+      "reply": null,
+      "doc": "Stops that chat turn."
+    },
+    {
+      "name": "chatMemory",
+      "channel": "chat:memory",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "array"
+      },
+      "doc": "The remembered conversation."
+    },
+    {
+      "name": "chatRemember",
+      "channel": "chat:remember",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [
+        {
+          "name": "history",
+          "type": "array",
+          "max": 500,
+          "doc": "the conversation"
+        }
+      ],
+      "pack": "first",
+      "reply": null,
+      "doc": "Remembers the conversation."
+    },
+    {
+      "name": "lookSnap",
+      "channel": "look:snap",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "Takes a picture of your screen; the id stands for 2 minutes."
+    },
+    {
+      "name": "lookSay",
+      "channel": "look:say",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "request",
+          "type": "object",
+          "props": {
+            "id": {
+              "type": "string",
+              "max": 100,
+              "required": true
+            },
+            "persona": {
+              "type": "string",
+              "max": 100000
+            },
+            "prompt": {
+              "type": "string",
+              "max": 100000,
+              "required": true
+            },
+            "history": {
+              "type": "array",
+              "max": 500
+            }
+          },
+          "doc": "the picture's id and what to ask about it"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "What her AI says about the picture."
+    },
+    {
+      "name": "lookWhere",
+      "channel": "look:where",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "local": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "Where her AI runs, for what she says before she looks."
+    },
+    {
+      "name": "cpu",
+      "channel": "pc:cpu",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "number",
+        "nullable": true
+      },
+      "doc": "How hard the processor works, in %, since the last call (null the first time)."
+    },
+    {
+      "name": "openOllama",
+      "channel": "chat:ollama",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "Opens the Ollama site."
+    },
+    {
+      "name": "setupInfo",
+      "channel": "setup:info",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "models": {
+            "type": "array"
+          },
+          "cloud": {
+            "type": "array"
+          },
+          "ram": {
+            "type": "number"
+          },
+          "keyed": {
+            "type": "array"
+          }
+        }
+      },
+      "doc": "What the setup offers."
+    },
+    {
+      "name": "ollamaState",
+      "channel": "setup:ollama",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "Whether Ollama is installed and running."
+    },
+    {
+      "name": "installOllama",
+      "channel": "setup:install",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "unsupported": {
+            "type": "boolean"
+          }
+        }
+      },
+      "doc": "Installs Ollama (progress: setup:progress { kind: \"install\" })."
+    },
+    {
+      "name": "startOllama",
+      "channel": "setup:start",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "Starts Ollama."
+    },
+    {
+      "name": "pullModel",
+      "channel": "setup:pull",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "max": 200,
+          "doc": "a model of the setup's list"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "Fetches a model (progress: setup:progress { kind: \"pull\" })."
+    },
+    {
+      "name": "cancelSetup",
+      "channel": "setup:cancel",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "Stops the model being fetched."
+    },
+    {
+      "name": "useProvider",
+      "channel": "setup:use",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "choice",
+          "type": "object",
+          "props": {
+            "provider": {
+              "type": "string",
+              "max": 50,
+              "required": true
+            },
+            "key": {
+              "type": "string",
+              "max": 4096
+            },
+            "url": {
+              "type": "string",
+              "max": 2000
+            }
+          },
+          "doc": "who answers her chat, with its key or address"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "Saves the provider, tries it, and undoes it if it fails."
+    },
+    {
+      "name": "keyPage",
+      "channel": "setup:keyPage",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [
+        {
+          "name": "provider",
+          "type": "string",
+          "max": 50,
+          "doc": "a provider with a key page"
+        }
+      ],
+      "pack": "first",
+      "reply": null,
+      "doc": "Opens the page where that provider's key is made."
+    },
+    {
+      "name": "launchThroughOllama",
+      "channel": "setup:launch",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "integration",
+          "type": "string",
+          "max": 50,
+          "enum": [
+            "claude",
+            "codex"
+          ],
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "unsupported": {
+            "type": "boolean"
+          }
+        }
+      },
+      "doc": "Opens an assistant through Ollama (Windows)."
+    },
+    {
+      "name": "openApps",
+      "channel": "apps:list",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "props": {
+            "name": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "doc": "The apps she may close."
+    },
+    {
+      "name": "findApp",
+      "channel": "apps:find",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "wanted",
+          "type": "string",
+          "max": 2000,
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "nullable": true
+      },
+      "doc": "The open app that matches what you said."
+    },
+    {
+      "name": "closeApp",
+      "channel": "apps:close",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "max": 2000,
+          "doc": ""
+        },
+        {
+          "name": "force",
+          "type": "boolean",
+          "coerce": "boolean",
+          "optional": true,
+          "doc": ""
+        }
+      ],
+      "pack": "object",
+      "reply": {
+        "type": "object",
+        "props": {
+          "error": {
+            "type": "string"
+          },
+          "unsupported": {
+            "type": "boolean"
+          }
+        }
+      },
+      "doc": "Closes an app you confirmed."
+    },
+    {
+      "name": "findLaunch",
+      "channel": "apps:findLaunch",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "text",
+          "type": "string",
+          "max": 2000,
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "risky": {
+            "type": "boolean"
+          }
+        },
+        "nullable": true
+      },
+      "doc": "An app, a game or a folder that matches what you said."
+    },
+    {
+      "name": "launch",
+      "channel": "apps:launch",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "item",
+          "type": "object",
+          "props": {
+            "kind": {
+              "type": "string",
+              "max": 50,
+              "required": true
+            },
+            "id": {
+              "type": "string",
+              "max": 4096
+            }
+          },
+          "doc": "an item findLaunch gave"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "Opens it (only what findLaunch listed)."
+    },
+    {
+      "name": "media",
+      "channel": "apps:media",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "action",
+          "type": "string",
+          "max": 20,
+          "enum": [
+            "pause",
+            "play",
+            "next",
+            "previous",
+            "volup",
+            "voldown",
+            "mute"
+          ],
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "boolean"
+      },
+      "doc": "A media key (Windows)."
+    },
+    {
+      "name": "music",
+      "channel": "apps:music",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "query",
+          "type": "string",
+          "max": 2000,
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "boolean"
+      },
+      "doc": "A Spotify search."
+    },
+    {
+      "name": "youtube",
+      "channel": "apps:youtube",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "query",
+          "type": "string",
+          "max": 2000,
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "title": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "nullable": true
+      },
+      "doc": "The song on YouTube in your browser."
+    },
+    {
+      "name": "roblox",
+      "channel": "apps:roblox",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "query",
+          "type": "string",
+          "max": 2000,
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "nullable": true
+      },
+      "doc": "The Roblox game, opened."
+    },
+    {
+      "name": "searchFiles",
+      "channel": "files:search",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "request",
+          "type": "object",
+          "props": {
+            "query": {
+              "type": "string",
+              "max": 2000
+            },
+            "exts": {
+              "type": "array",
+              "max": 50,
+              "items": {
+                "type": "string",
+                "max": 20
+              }
+            }
+          },
+          "doc": "a name and/or file types"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "array"
+      },
+      "doc": "Your files that match."
+    },
+    {
+      "name": "openFile",
+      "channel": "files:open",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "file",
+          "type": "string",
+          "max": 4096,
+          "doc": ""
+        },
+        {
+          "name": "reveal",
+          "type": "boolean",
+          "coerce": "boolean",
+          "optional": true,
+          "doc": "show it in its folder instead of opening it"
+        }
+      ],
+      "pack": "object",
+      "reply": {
+        "type": "boolean"
+      },
+      "doc": "Opens a file a search showed."
+    },
+    {
+      "name": "screenshot",
+      "channel": "files:screenshot",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {},
+        "nullable": true
+      },
+      "doc": "A screenshot saved on your computer."
+    },
+    {
+      "name": "webSearch",
+      "channel": "web:search",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "query",
+          "type": "string",
+          "max": 2000,
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "boolean"
+      },
+      "doc": "A search on the web, in your browser."
+    },
+    {
+      "name": "openSite",
+      "channel": "apps:site",
+      "scope": "overlay",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "address",
+          "type": "string",
+          "max": 2000,
+          "doc": ""
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "boolean"
+      },
+      "doc": "A website (http and https only)."
+    },
+    {
+      "name": "focusOverlay",
+      "channel": "overlay:focus",
+      "scope": "overlay",
+      "kind": "send",
+      "params": [
+        {
+          "name": "on",
+          "type": "boolean",
+          "coerce": "boolean",
+          "optional": true,
+          "doc": "true: the overlay takes the keyboard (the chat); false: gives it back"
+        }
+      ],
+      "pack": "first",
+      "reply": null,
+      "doc": "The overlay takes the keyboard while the chat is open."
+    },
+    {
+      "name": "view",
+      "channel": "settings:view",
+      "scope": "settings",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "title": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array"
+          }
+        },
+        "nullable": true
+      },
+      "doc": "What the window shows (settings-view.js)."
+    },
+    {
+      "name": "ready",
+      "channel": "settings:ready",
+      "scope": "settings",
+      "kind": "send",
+      "params": [
+        {
+          "name": "info",
+          "type": "object",
+          "props": {
+            "sections": {
+              "type": "number"
+            },
+            "focused": {
+              "type": "any"
+            }
+          },
+          "doc": "what the page shows once up"
+        }
+      ],
+      "pack": "first",
+      "reply": null,
+      "doc": "The settings page is up (the smoke test waits for it)."
+    },
+    {
+      "name": "set",
+      "channel": "settings:set",
+      "scope": "settings",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "patch",
+          "type": "object",
+          "props": {},
+          "doc": "the fields to change; the core checks every key and type"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object"
+          }
+        }
+      },
+      "doc": "Saves a change."
+    },
+    {
+      "name": "saveKey",
+      "channel": "settings:key",
+      "scope": "settings",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "provider",
+          "type": "string",
+          "max": 50,
+          "doc": ""
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "max": 4096,
+          "doc": ""
+        }
+      ],
+      "pack": "object",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "A new API key: sent, sealed, never read back."
+    },
+    {
+      "name": "reset",
+      "channel": "settings:reset",
+      "scope": "settings",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "doc": "Back to the defaults."
+    },
+    {
+      "name": "restart",
+      "channel": "settings:restart",
+      "scope": "settings",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "Restarts her."
+    },
+    {
+      "name": "openMenu",
+      "channel": "settings:menu",
+      "scope": "settings",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "Her menu over the settings window."
+    },
+    {
+      "name": "close",
+      "channel": "settings:close",
+      "scope": "settings",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "Closes the window."
+    },
+    {
+      "name": "updates.check",
+      "channel": "updates:check",
+      "scope": "settings",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "Looks for an update; answers the update view."
+    },
+    {
+      "name": "updates.download",
+      "channel": "updates:download",
+      "scope": "settings",
+      "kind": "handle",
+      "params": [],
+      "pack": "none",
+      "reply": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "Downloads the update offered."
+    },
+    {
+      "name": "updates.install",
+      "channel": "updates:install",
+      "scope": "settings",
+      "kind": "handle",
+      "params": [
+        {
+          "name": "confirmed",
+          "type": "boolean",
+          "coerce": "true-only",
+          "optional": true,
+          "doc": "the window asked and you said yes"
+        }
+      ],
+      "pack": "first",
+      "reply": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "Installs the downloaded update and restarts, once confirmed in the window."
+    },
+    {
+      "name": "updates.page",
+      "channel": "updates:page",
+      "scope": "settings",
+      "kind": "send",
+      "params": [],
+      "pack": "none",
+      "reply": null,
+      "doc": "Opens the release page (only this repository's)."
+    }
+  ],
+  "events": [
+    {
+      "name": "onClaudeEvent",
+      "event": "claude:event",
+      "scope": "overlay",
+      "payload": {
+        "type": "object",
+        "props": {
+          "session_id": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "An assistant's hook event (what the bridge took)."
+    },
+    {
+      "name": "onCommand",
+      "event": "capri:command",
+      "scope": "overlay",
+      "payload": {
+        "type": "object",
+        "props": {
+          "name": {
+            "type": "string",
+            "required": true
+          }
+        }
+      },
+      "doc": "The core tells her to do something: { name, ...details } (status, stow, screens, goScreen, watchScreen, hooks, update ...)."
+    },
+    {
+      "name": "onConfig",
+      "event": "capri:config",
+      "scope": "overlay",
+      "payload": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "The config changed (without the keys)."
+    },
+    {
+      "name": "onResize",
+      "event": "overlay:resize",
+      "scope": "overlay",
+      "payload": {
+        "type": "object",
+        "props": {
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
+          },
+          "gap": {
+            "type": "number"
+          }
+        }
+      },
+      "doc": "Her window was fitted again."
+    },
+    {
+      "name": "onWindows",
+      "event": "windows:update",
+      "scope": "overlay",
+      "payload": {
+        "type": "object",
+        "props": {}
+      },
+      "doc": "The windows watcher's news ({ fg, wins, ... })."
+    },
+    {
+      "name": "onPower",
+      "event": "power:state",
+      "scope": "overlay",
+      "payload": {
+        "type": "object",
+        "props": {
+          "away": {
+            "type": "boolean"
+          },
+          "why": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "Away (screen locked or asleep) or back."
+    },
+    {
+      "name": "onChatDelta",
+      "event": "chat:delta",
+      "scope": "overlay",
+      "payload": {
+        "type": "object",
+        "props": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "A piece of her answer to chatSend."
+    },
+    {
+      "name": "onSetupProgress",
+      "event": "setup:progress",
+      "scope": "overlay",
+      "payload": {
+        "type": "object",
+        "props": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "install",
+              "pull"
+            ]
+          }
+        }
+      },
+      "doc": "The progress of an Ollama install or a model fetch."
+    },
+    {
+      "name": "onView",
+      "event": "settings:view",
+      "scope": "settings",
+      "payload": {
+        "type": "object",
+        "props": {
+          "title": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array"
+          }
+        }
+      },
+      "doc": "The window shows another view (the config or her language changed)."
+    },
+    {
+      "name": "onSection",
+      "event": "settings:section",
+      "scope": "settings",
+      "payload": {
+        "type": "string"
+      },
+      "doc": "A section asked from outside (her menu's \"Update available\")."
+    },
+    {
+      "name": "updates.onStatus",
+      "event": "updates:status",
+      "scope": "settings",
+      "payload": {
+        "type": "object",
+        "props": {
+          "kind": {
+            "type": "string"
+          }
+        }
+      },
+      "doc": "The updater's status."
+    }
+  ]
+}

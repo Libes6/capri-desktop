@@ -24,6 +24,7 @@
     "test:hooks": "node --test tests/hooks.test.js",
     "dist": "electron-builder --publish never",
     "test": "node --test tests/*.test.js",
+    "protocol:export": "node scripts/export-protocol.js",
     "test:smoke": "node scripts/smoke-test.js",
     "updater:smoke": "node scripts/updater-smoke.js",
     "dist:win": "electron-builder --win --x64 --publish never",

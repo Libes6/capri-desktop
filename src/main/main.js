@@ -29,10 +29,34 @@ if (SMOKE) {
   Object.assign(notify, createSmoke({ core, platform }).notify);
 }
 
-// every channel of her pages goes to the core's handler of that name
+// every channel of her pages goes through the core's dispatcher (dispatch.js): the window it comes from,
+// its arguments against the protocol (src/protocol.js), then the core's handler of that name. A refused
+// call is logged; the caller of an `invoke` gets the error, a plain `send` just gets nothing.
 function registerIpc() {
-  for (const [channel, fn] of Object.entries(core.ipc.on)) platform.ipc.on(channel, fn);
-  for (const [channel, fn] of Object.entries(core.ipc.handle)) platform.ipc.handle(channel, fn);
+  const refused = (err) => {
+    if (err?.name !== 'ProtocolError') throw err;
+    console.warn(`[capri] refused: ${err.message}`);
+    return err;
+  };
+  for (const c of core.dispatch.commands) {
+    if (c.kind === 'send') {
+      platform.ipc.on(c.channel, (arg, sender) => {
+        try {
+          core.dispatch.handleChannel(c.channel, arg, sender);
+        } catch (err) {
+          refused(err);
+        }
+      });
+    } else {
+      platform.ipc.handle(c.channel, (arg, sender) => {
+        try {
+          return core.dispatch.handleChannel(c.channel, arg, sender);
+        } catch (err) {
+          throw refused(err);
+        }
+      });
+    }
+  }
 }
 
 function main() {

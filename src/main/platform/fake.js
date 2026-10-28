@@ -161,6 +161,8 @@ function createFakePlatform({ userData, overrides = {}, display } = {}) {
           focus: () => note('overlay.focus', []),
           blur: () => note('overlay.blur', []),
           isAlive: () => !overlay.closed,
+          page: { id: 'overlay-page' }, // what a message from her page is sent as (a test passes it as the sender)
+          owns: (sender) => !overlay.closed && sender === overlay.page,
           nativeHandle: () => Buffer.alloc(8),
           mediaSourceId: () => 'window:1:0',
           capture: async () => null,
