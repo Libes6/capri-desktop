@@ -13,3 +13,9 @@ src/main/mac/bin/
 
 # capri-hook Rust build output
 crates/*/target/
+
+# Tauri shell (TAURI-04): the staged page files and the built sidecar are generated
+src-tauri/frontend/
+src-tauri/binaries/
+src-tauri/gen/
+src-tauri/target/
