@@ -17,6 +17,9 @@ const { createPeer } = require('./rpc');
 const { createSidecarPlatform } = require('../src/main/platform/sidecar');
 const { createCore } = require('../src/main/core');
 
+// stdout is the protocol's: whatever the core prints with console.log / info goes to stderr
+console.log = console.info = console.debug = (...args) => console.error(...args);
+
 const log = (message) => process.stderr.write(`[sidecar] ${message}\n`);
 
 async function main() {
