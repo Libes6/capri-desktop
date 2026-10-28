@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "Her overlay window (label overlay): the one bridge command and events, nothing else. No window, shell, fs or dialog rights; the commands it may call are the overlay scope of the protocol, checked in the core.",
+  "windows": ["overlay"],
+  "permissions": ["allow-host-invoke", "core:event:allow-listen", "core:event:allow-unlisten"]
+}

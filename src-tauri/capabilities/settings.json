@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "Her settings window (label settings, made by TAURI-06): the bridge command and events, and none of the overlay's. Rust refuses a scope other than the window's own, and the core's dispatcher checks it again.",
+  "windows": ["settings"],
+  "permissions": ["allow-host-invoke", "core:event:allow-listen", "core:event:allow-unlisten"]
+}
