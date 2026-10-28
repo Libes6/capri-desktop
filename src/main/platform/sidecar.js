@@ -6,8 +6,9 @@
 //
 // What the Rust side answers today: paths, the overlay window (create, bounds, click-through, level,
 // focusable), events to her page, quit / relaunch / exit, the screens and the cursor (pushed by Rust,
-// read here from a cache because the platform's methods are synchronous). Everything else (tray,
-// settings window, secrets, capture, clipboard, shortcuts, autostart, shell, power, dialogs, demo
+// read here from a cache because the platform's methods are synchronous), and (TAURI-06) the tray with
+// her menu (menu-wire.js), the settings window, the application menu, the global shortcut and the
+// autostart. Everything else (secrets, capture, clipboard, shell, power, dialogs, demo
 // window, updater) belongs to TAURI-05..07: it answers { unsupported: true } where a method answers
 // anything, or the neutral value of its type (no picture: null, no key store: false), and is logged
 // once. The core never crashes on it.
@@ -19,6 +20,8 @@
 
 const { EventEmitter } = require('node:events');
 const path = require('node:path');
+const { serializeMenu, createClickBook } = require('./menu-wire');
+const { settingsBounds } = require('../settings-window');
 
 function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[sidecar] ${m}`) }) {
   const unsupportedCalls = new Set();
@@ -42,6 +45,15 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
   const ipc = { on: new Map(), handle: new Map() };
   let overlay = null;
   let secondInstance = () => {};
+  // TAURI-06: the tray (its clicks, the icon's bounds), the settings window, the shortcuts, autostart
+  const clickBook = createClickBook();
+  let menuGeneration = 0;
+  let trayClick = () => {};
+  let trayBounds = { x: 0, y: 0, width: 0, height: 0 };
+  let settingsOpen = false;
+  const shortcutFns = new Map();
+  let shortcutCount = 0;
+  let autostartOn = Boolean(hello.autostart);
 
   const inside = (p, b) => p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
   const dist = (p, b) => {
@@ -63,6 +75,17 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       for (const fn of quitHandlers) { try { fn(); } catch (err) { log(`on quit: ${err.message}`); } }
     } else if (method === 'power') {
       power.emit(params.event);
+    } else if (method === 'tray.click') {
+      clickBook.click(params.id, params.checked, log);
+    } else if (method === 'tray.iconClick') {
+      try { trayClick(); } catch (err) { log(`tray click: ${err.message}`); }
+    } else if (method === 'tray.bounds') {
+      trayBounds = params;
+    } else if (method === 'settings.closed') {
+      settingsOpen = false;
+    } else if (method === 'shortcut') {
+      const fn = shortcutFns.get(params.id);
+      if (fn) { try { fn(); } catch (err) { log(`shortcut: ${err.message}`); } }
     } else {
       log(`unknown notification ${method}`);
     }
@@ -135,16 +158,24 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       focus: () => tell('app.focus', {}),
       hideFromDock: () => {}, // Rust does it (Accessory policy) before any window
       setAppId: () => {},
-      installAppMenu: () => {}, // TAURI-06
+      // macOS: Edit, Quit, Window (not for her overlay); none elsewhere (Rust: menu.rs)
+      installAppMenu: () => tell('app.installMenu', {}),
       appForProtocol: () => unsupported('app.appForProtocol', false),
       setRenderMode: () => {},
       gpuStatus: () => ({}),
       serveAssets: () => {}, // Rust serves capri://usersounds/ from userData/sounds itself
     },
 
+    // the login item: Rust says what it is when it starts (hello), and does what it is told
     autostart: {
-      isEnabled: () => unsupported('autostart.isEnabled', false),
-      set: () => unsupported('autostart.set'),
+      isEnabled: () => autostartOn,
+      set: (on) => {
+        const before = autostartOn;
+        autostartOn = Boolean(on);
+        ask('autostart.set', { on: autostartOn }).then((r) => {
+          if (r && r.error) autostartOn = before;
+        });
+      },
     },
 
     screens: Object.assign(screens, {
@@ -169,19 +200,46 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       showItemInFolder: () => unsupported('shell.showItemInFolder'),
     },
 
+    // global shortcuts (tauri-plugin-global-shortcut, Electron's accelerator names). Whether the system
+    // took it is known a moment later, so this says yes and logs the refusal (another app holds it)
     shortcuts: {
-      register: () => unsupported('shortcuts.register', false),
-      unregisterAll: () => {},
+      register: (accelerator, fn) => {
+        const id = `s${++shortcutCount}`;
+        shortcutFns.set(id, fn);
+        ask('shortcuts.register', { id, accelerator }).then((r) => {
+          if (!r || r.error || r.ok === false) {
+            shortcutFns.delete(id);
+            log(`shortcut ${accelerator} not registered${r?.error ? `: ${r.error}` : ''}`);
+          }
+        });
+        return true;
+      },
+      unregisterAll: () => {
+        shortcutFns.clear();
+        tell('shortcuts.unregisterAll', {});
+      },
     },
 
     capture: { screen: async () => unsupported('capture.screen', null) },
     clipboard: { writeImage: async () => unsupported('clipboard.writeImage') },
     dialogs: { pickFolder: async () => unsupported('dialogs.pickFolder', null) },
 
+    // her tray icon: Rust draws it and builds the menu from the data (menu-wire.js); a click on an
+    // item comes back by id. On macOS the icon opens the menu; elsewhere a left click is `onClick`.
     tray: {
-      create: () => {
-        unsupported('tray.create');
-        return { setMenu: () => {}, popup: () => {}, bounds: () => ({ x: 0, y: 0, width: 0, height: 0 }) };
+      create: ({ onClick }) => {
+        trayClick = onClick || (() => {});
+        tell('tray.create', {});
+        return {
+          setMenu: (template) => {
+            const wire = serializeMenu(template, ++menuGeneration);
+            clickBook.add(wire);
+            tell('tray.setMenu', { generation: wire.generation, items: wire.items });
+          },
+          // the same menu as the icon's, over her overlay or her settings window, at the pointer
+          popup: (where) => tell('tray.popup', { window: where === 'settings' ? 'settings' : 'overlay' }),
+          bounds: () => trayBounds,
+        };
       },
     },
 
@@ -195,16 +253,30 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
         });
         return handle;
       },
-      // TAURI-06: the real window; a controller that is never open, so nothing asks for it twice
-      createSettings: () => ({
-        open: () => { unsupported('windows.createSettings'); return null; },
-        close: () => {},
-        update: () => {},
-        send: () => {},
-        isOpen: () => false,
-        window: () => null,
-        owns: () => false,
-      }),
+      // the settings window (src-tauri/src/settings_window.rs): one at a time, made and kept by Rust.
+      // Same controller as settings-window.js; `owns` goes by the window's label.
+      createSettings: ({ view, area }) => {
+        tell('settings.reset', {}); // a window left by a core that went (the sidecar came back) is closed
+        const send = (event, payload) => settingsOpen && tell('emit', { window: 'settings', event, payload });
+        return {
+          open: (section) => {
+            settingsOpen = true;
+            tell('settings.open', { title: view().title, bounds: settingsBounds(area?.()), section: section || null });
+            return { label: 'settings' };
+          },
+          close: () => { if (settingsOpen) tell('settings.close', {}); },
+          update: () => {
+            if (!settingsOpen) return;
+            const v = view();
+            tell('settings.title', { title: v.title });
+            send('settings:view', v);
+          },
+          send,
+          isOpen: () => settingsOpen,
+          window: () => (settingsOpen ? { label: 'settings' } : null),
+          owns: (sender) => settingsOpen && sender?.label === 'settings',
+        };
+      },
       createDemoTerminal: () => {
         unsupported('windows.createDemoTerminal');
         return { destroy: () => {} };
@@ -221,6 +293,8 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
     },
 
     native: null,
+    // the dev debug routes (sidecar/debug.js): a request to Rust as it is
+    debugRequest: (method, params) => rpc.request(method, params),
     overlayNow: () => overlay,
   };
 }

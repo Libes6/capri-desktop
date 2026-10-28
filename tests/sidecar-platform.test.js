@@ -132,10 +132,10 @@ test('what Rust cannot do yet is answered neutrally and logged once, the core do
     assert.equal(await platform.capture.screen({}, {}), null);
     assert.deepEqual(await platform.shell.openExternal('https://example.com'), { unsupported: true });
     await platform.shell.openExternal('https://example.com');
-    assert.equal(platform.shortcuts.register('X', () => {}), false);
     const logs = seen.filter((s) => s.kind === 'log' && /unsupported: shell.openExternal/.test(s.m));
     assert.equal(logs.length, 1, 'logged once');
-    assert.ok(platform.unsupported.has('tray.create') && platform.unsupported.has('shortcuts.register'));
+    assert.ok(platform.unsupported.has('secrets.isAvailable') && platform.unsupported.has('capture.screen'));
+    assert.ok(!platform.unsupported.has('tray.create'), 'the tray is the shell\'s now');
     core.stop();
   } finally {
     fs.rmSync(userData, { recursive: true, force: true });

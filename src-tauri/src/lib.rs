@@ -5,11 +5,16 @@
 //! they are for. See docs/TAURI_DEV.md and docs/TAURI_SIDECAR.md.
 
 mod assets;
+mod autostart;
+mod menu;
 #[cfg(target_os = "macos")]
 mod mac;
 mod overlay;
 pub mod rpc;
+mod settings_window;
+mod shortcuts;
 pub mod sidecar;
+mod tray;
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -77,6 +82,7 @@ impl Bridge {
             },
             "screens": screens["list"],
             "cursor": cursor,
+            "autostart": autostart::is_enabled(app),
         })
     }
 }
@@ -89,7 +95,8 @@ impl Handler for Bridge {
             "hello" => Ok(self.hello()),
             "overlay.create" => overlay::create(&self.app, rect(&params["area"])?).map(|r| json!(r)).map_err(fail),
             "overlay.setBounds" => overlay::set_bounds(&self.app, rect(&params["rect"])?).map(|r| json!(r)).map_err(fail),
-            _ => Err(RpcError::new(-32601, format!("unknown method {method}"))),
+            // tray, menus, settings window, shortcuts, autostart (TAURI-06)
+            _ => menu::route_request(&self.app, method, &params).map(|r| r.map_err(fail)).unwrap_or_else(|| Err(RpcError::new(-32601, format!("unknown method {method}")))),
         }
     }
 
@@ -124,7 +131,11 @@ impl Handler for Bridge {
             }
             "app.focus" => {} // TAURI-05: the chat takes the keyboard
             "ready" => println!("[capri] core ready (sidecar pid {})", params["pid"]),
-            other => eprintln!("[capri] unknown notification from the core: {other}"),
+            other => {
+                if !menu::route_notification(&self.app, other, &params) {
+                    eprintln!("[capri] unknown notification from the core: {other}");
+                }
+            }
         }
     }
 
@@ -202,6 +213,8 @@ pub fn run() {
                 s.notify("second-instance", json!({ "argv": argv, "cwd": cwd }));
             }
         }))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .register_uri_scheme_protocol("capri", |_ctx, request| match USER_DATA.get() {
             Some(dir) => assets::serve_user_sounds(dir, &request),
             None => tauri::http::Response::builder().status(503).body(Vec::new()).unwrap(),
