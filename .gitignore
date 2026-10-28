@@ -10,3 +10,6 @@ captures/
 
 # compiled macOS window helper (build: see docs/MAC_WINDOW_TRACKING.md)
 src/main/mac/bin/
+
+# capri-hook Rust build output
+crates/*/target/

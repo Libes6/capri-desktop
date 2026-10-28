@@ -1,0 +1,27 @@
+[package]
+name = "capri-hook"
+version = "0.1.0"
+edition = "2021"
+description = "Forwards coding-assistant hook events to the local Capri bridge. No Node, no webview."
+license = "PolyForm-Noncommercial-1.0.0"
+publish = false
+
+# Stand-alone package: not part of any other Cargo workspace in the repository.
+[workspace]
+
+[lib]
+name = "capri_hook"
+path = "src/lib.rs"
+
+[[bin]]
+name = "capri-hook"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

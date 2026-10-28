@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const hooksCommand = require('../src/main/hooks-command');
 
 const EVENTS = [
   'SessionStart',
@@ -22,7 +23,6 @@ const EVENTS = [
 ];
 
 const HOOK_KEY = 'capri-agy';
-const MARK = 'capri-agy-hook.js';
 
 function settingsPath() {
   const base = process.env.AGY_CONFIG_DIR || path.join(os.homedir(), '.gemini', 'config');
@@ -41,7 +41,7 @@ function hasNode() {
   }
 }
 
-function hookCommand(eventType) {
+function legacyCommand(eventType) {
   const script = path.resolve(__dirname, '..', 'hooks', 'capri-agy-hook.js')
     .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
   if (!process.versions.electron) {
@@ -51,6 +51,10 @@ function hookCommand(eventType) {
     return `node ${quoteIfNeeded(script)} ${eventType}`;
   }
   return `ELECTRON_RUN_AS_NODE=1 ${quoteIfNeeded(process.execPath)} ${quoteIfNeeded(script)} ${eventType}`;
+}
+
+function hookCommand(eventType) {
+  return hooksCommand.hookCommand('agy', { eventType, legacy: () => legacyCommand(eventType) });
 }
 
 function readSettings(file) {
@@ -67,7 +71,7 @@ function readSettings(file) {
 function strip(settings) {
   delete settings[HOOK_KEY];
   for (const [key, val] of Object.entries(settings)) {
-    if (val && typeof val === 'object' && (JSON.stringify(val).includes(MARK) || JSON.stringify(val).includes('capri-hook.js'))) {
+    if (val && typeof val === 'object' && hooksCommand.containsCapriCommand(val, ['agy', 'claude'])) {
       delete settings[key];
     }
   }
@@ -134,7 +138,7 @@ function status() {
   try {
     const settings = readSettings(file);
     const entry = settings[HOOK_KEY];
-    const installed = Boolean(entry && entry.enabled !== false && (JSON.stringify(entry).includes(MARK) || JSON.stringify(entry).includes('capri-hook.js')));
+    const installed = Boolean(entry && entry.enabled !== false && hooksCommand.containsCapriCommand(entry, ['agy', 'claude']));
     const events = installed ? EVENTS.filter((e) => Boolean(entry[e])) : [];
     return { file, installed, events };
   } catch (err) {
@@ -142,7 +146,12 @@ function status() {
   }
 }
 
-module.exports = { install, uninstall, status, EVENTS };
+// Rewrite old Electron/Node entries to the capri-hook binary (no-op without the binary).
+function migrate(bin) {
+  return hooksCommand.migrateFile(settingsPath(), 'agy', bin);
+}
+
+module.exports = { install, uninstall, status, migrate, EVENTS };
 
 if (require.main === module) {
   const arg = process.argv[2];

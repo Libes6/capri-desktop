@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const hooksCommand = require('../src/main/hooks-command');
 
 const EVENTS = [
   'SessionStart',
@@ -28,8 +29,6 @@ const EVENTS = [
   'SessionEnd',
 ];
 
-const MARK = 'capri-hook.js';
-
 function settingsPath() {
   const base = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
   return path.join(base, 'settings.json');
@@ -43,9 +42,10 @@ function hasNode() {
   }
 }
 
+// Without the capri-hook binary (the Electron build), the JS hook runs under node.
 // In the installed app (the .exe) the hook sits next to the app archive (asarUnpack), where
 // node can read it. With no node on the machine, Capri's own executable runs it as node.
-function hookCommand() {
+function legacyCommand() {
   const script = path.resolve(__dirname, '..', 'hooks', 'capri-hook.js')
     .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
     .replace(/\\/g, '/');
@@ -53,6 +53,10 @@ function hookCommand() {
     return `ELECTRON_RUN_AS_NODE=1 "${process.execPath.replace(/\\/g, '/')}" "${script}"`;
   }
   return `node "${script}"`;
+}
+
+function hookCommand() {
+  return hooksCommand.hookCommand('claude', { legacy: legacyCommand });
 }
 
 function readSettings(file) {
@@ -68,7 +72,7 @@ function readSettings(file) {
 }
 
 function isCapriGroup(group) {
-  return Array.isArray(group?.hooks) && group.hooks.some((h) => String(h.command || '').includes(MARK));
+  return Array.isArray(group?.hooks) && group.hooks.some((h) => hooksCommand.isCapriCommand(h.command, 'claude'));
 }
 
 function strip(settings) {
@@ -133,7 +137,12 @@ function status() {
   }
 }
 
-module.exports = { install, uninstall, status, EVENTS };
+// Rewrite old Electron/Node entries to the capri-hook binary (no-op without the binary).
+function migrate(bin) {
+  return hooksCommand.migrateFile(settingsPath(), 'claude', bin);
+}
+
+module.exports = { install, uninstall, status, migrate, EVENTS };
 
 if (require.main === module) {
   const arg = process.argv[2];
