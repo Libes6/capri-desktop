@@ -27,7 +27,9 @@ function wire({ rustHandlers = {}, timeoutMs } = {}) {
     },
     onNotification: (method, params) => seen.push({ kind: 'notification', method, params }),
   });
-  sidecar = createPeer({ write: (line) => setImmediate(() => rust.feed(line)), timeoutMs, onRequest: async () => null });
+  const hook = { fn: () => {} };
+  sidecar = createPeer({ write: (line) => setImmediate(() => rust.feed(line)), timeoutMs, onRequest: async () => null, onNotification: (m, p) => hook.fn(m, p) });
+  sidecar.hook = hook;
   return { rust, sidecar, seen };
 }
 
@@ -73,6 +75,7 @@ async function startOnSidecar(extra = {}) {
     screens: [display], cursor: { x: 10, y: 20 },
   };
   const platform = createSidecarPlatform({ rpc: sidecar, hello, root: path.resolve(__dirname, '..'), log: (m) => seen.push({ kind: 'log', m }) });
+  sidecar.hook.fn = platform.onNotification;
   const core = createCore({ platform, smoke: true, port: 0, watchWindows: () => ({ stop() {}, refresh() {} }), ...extra });
   return { rust, sidecar, seen, platform, core, userData, hello };
 }
