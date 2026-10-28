@@ -24,27 +24,11 @@
 //   root: the project folder in dev, the resources folder when packaged
 
 const { EventEmitter } = require('node:events');
-const crypto = require('node:crypto');
 const path = require('node:path');
 const { serializeMenu, createClickBook } = require('./menu-wire');
 const { settingsBounds } = require('../settings-window');
 
-// API keys sealed in config.json as "kc:<base64>" (Electron's safeStorage ones are "enc:", setup.js
-// createKeys tells them apart): AES-256-GCM under the master key that lives in the system key store
-// (src-tauri/src/secrets.rs). The blob is: version byte 1 | 12-byte nonce | ciphertext | 16-byte tag.
-const SEAL_VERSION = 1;
-function sealWith(masterKey, text) {
-  const nonce = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', masterKey, nonce);
-  const body = Buffer.concat([cipher.update(String(text), 'utf8'), cipher.final()]);
-  return Buffer.concat([Buffer.from([SEAL_VERSION]), nonce, body, cipher.getAuthTag()]);
-}
-function openWith(masterKey, blob) {
-  if (blob.length < 1 + 12 + 16 || blob[0] !== SEAL_VERSION) throw new Error('secrets: not a sealed key');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', masterKey, blob.subarray(1, 13));
-  decipher.setAuthTag(blob.subarray(blob.length - 16));
-  return Buffer.concat([decipher.update(blob.subarray(13, blob.length - 16)), decipher.final()]).toString('utf8');
-}
+const { sealWith, openWith } = require('../seal'); // "kc:" keys: AES-256-GCM under the master key (src/main/seal.js)
 
 function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[sidecar] ${m}`) }) {
   const unsupportedCalls = new Set();

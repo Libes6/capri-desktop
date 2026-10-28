@@ -10,6 +10,8 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createSettingsWindow } = require('../settings-window');
+const { createCliKeyStore } = require('../keychain-cli');
+const { prepareTauriMigration } = require('../migrate-prepare');
 
 function createElectronPlatform({ electron = require('electron'), root, dev = false, smoke = false } = {}) {
   const {
@@ -330,6 +332,24 @@ function createElectronPlatform({ electron = require('electron'), root, dev = fa
       get: () => {
         const { autoUpdater, CancellationToken } = require('electron-updater');
         return { autoUpdater, CancellationToken };
+      },
+    },
+
+    // TAURI-09: the keys (and the login item's state) handed over for the Tauri build, which cannot open
+    // safeStorage's values itself (migrate-prepare.js). Electron only: the Tauri platform has no such section.
+    migration: {
+      prepareTauri: ({ userData, apiKeys, releaseAutostart = false }) => {
+        const loginItem = process.platform === 'win32' || process.platform === 'darwin';
+        return prepareTauriMigration({
+          userData,
+          apiKeys,
+          decrypt: (buffer) => safeStorage.decryptString(buffer),
+          canDecrypt: safeStorage.isEncryptionAvailable(),
+          store: createCliKeyStore(),
+          autostart: loginItem ? app.getLoginItemSettings(loginItemOptions()).openAtLogin : null,
+          setAutostart: (on) => app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: on }),
+          releaseAutostart,
+        });
       },
     },
 

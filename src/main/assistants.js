@@ -34,4 +34,9 @@ function migrateHooks(bin) {
   return Object.fromEntries(Object.entries(ASSISTANTS).map(([id, a]) => [id, a.hooks.migrate(bin)]));
 }
 
-module.exports = { ASSISTANTS, assistant, resolveAssistant, migrateHooks };
+// The way back (to the Electron build): `capri-hook` commands become the Node/Electron ones of the build that runs this.
+function revertHooks() {
+  return Object.fromEntries(Object.entries(ASSISTANTS).map(([id, a]) => [id, a.hooks.revert()]));
+}
+
+module.exports = { ASSISTANTS, assistant, resolveAssistant, migrateHooks, revertHooks };

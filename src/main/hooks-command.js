@@ -110,7 +110,43 @@ function migrateFile(file, assistant, bin = findHookBin()) {
   return { file, migrated };
 }
 
+// The way back (TAURI-09, going back to the Electron build): Capri's `capri-hook` entries become the
+// command `legacyFor(eventType)` gives (the installer's Electron/Node one, built by the build that is
+// running). Same rules as migrateFile: only Capri's own entries, a timestamped backup, a file that does
+// not parse is left alone. Returns { file, reverted }.
+function revertFile(file, assistant, legacyFor) {
+  if (typeof legacyFor !== 'function' || !fs.existsSync(file)) return { file, reverted: 0 };
+  let settings;
+  try {
+    settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return { file, reverted: 0 };
+  }
+  let reverted = 0;
+  const visit = (value) => {
+    if (Array.isArray(value)) return value.forEach(visit);
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.command === 'string') {
+      const found = classify(value.command);
+      if (found?.assistant === assistant && found.form === 'bin') {
+        const next = legacyFor(assistant === 'agy' ? agyEventType(value.command) : undefined);
+        if (next && next !== value.command) {
+          value.command = next;
+          reverted += 1;
+        }
+      }
+    }
+    Object.values(value).forEach(visit);
+  };
+  visit(settings);
+  if (reverted) {
+    fs.copyFileSync(file, `${file}.capri-backup-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+    fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
+  }
+  return { file, reverted };
+}
+
 module.exports = {
   BIN_NAME, SCRIPTS, ASSISTANTS, findHookBin, binCommand, hookCommand, classify,
-  isCapriCommand, isLegacyCommand, containsCapriCommand, rewriteCommands, migrateFile,
+  isCapriCommand, isLegacyCommand, containsCapriCommand, rewriteCommands, migrateFile, revertFile,
 };

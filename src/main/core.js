@@ -48,7 +48,9 @@ const OLLAMA_SITE = 'https://ollama.com';
 // not one the helper reports as a perch (mac/window-watch.js), and showInactive() brings it up anyway.
 const PERCH_ON_TOP = process.platform !== 'darwin';
 
-function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, dev = false, smoke = false, notify = {}, watchWindows = startWindowWatch }) {
+// migration (TAURI-09, the Tauri build): { keysLost: [provider ids whose API key could not be carried over from the
+// Electron build], noticeDue(): bool, noticeShown() }. Her pages are told once per launch (keysLost in config:get).
+function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, dev = false, smoke = false, notify = {}, watchWindows = startWindowWatch, migration = null }) {
   const DEV = dev;
   const SMOKE = smoke;
   const PORT = port;
@@ -635,7 +637,27 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     const o = overlay.bounds();
     return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
-  ipcHandle('config:get', () => rendererConfig());
+  // The first answer of a launch also says which keys did not come over from the Electron build and are
+  // still missing (names, not keys), so she can say so in her own words: enter them again.
+  let keysLostSaid = false;
+  function keysLostNames() {
+    if (keysLostSaid || !migration?.keysLost?.length) return [];
+    const have = config.load().apiKeys || {};
+    const missing = migration.keysLost.filter((id) => !have[id]);
+    if (!missing.length || (migration.noticeDue && !migration.noticeDue())) return [];
+    keysLostSaid = true;
+    try {
+      migration.noticeShown?.();
+    } catch (err) {
+      console.error('[capri] migration notice:', err.message);
+    }
+    return missing.map((id) => llm.PROVIDERS[id]?.label.replace(/\s*\(.*\)\s*$/, '') || id);
+  }
+  ipcHandle('config:get', () => {
+    const cfg = rendererConfig();
+    const keysLost = keysLostNames();
+    return keysLost.length ? { ...cfg, keysLost } : cfg;
+  });
   // her settings window (settings-preload.js): answered only for that window
   ipcHandle('settings:view', (_arg, sender) => (settings?.owns(sender) ? settingsView(settingsFacts()) : null));
   ipcOn('settings:close', (_arg, sender) => settings?.owns(sender) && settings.close());
@@ -922,6 +944,18 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     powerWatch = watchPower({ power: platform.power, onChange: sendPower });
   }
 
+  // TAURI-09 (Electron build only): the sealed keys and the login item's state for the Tauri build to pick
+  // up (migrate-prepare.js). Never throws, never logs a key; { ok:false, skipped } says why it did not happen.
+  async function prepareTauriMigration({ releaseAutostart = false } = {}) {
+    if (typeof platform.migration?.prepareTauri !== 'function') return { ok: false, skipped: 'not an Electron build' };
+    try {
+      return await platform.migration.prepareTauri({ userData: platform.paths.get('userData'), apiKeys: config.load().apiKeys, releaseAutostart });
+    } catch (err) {
+      console.error('[capri] Tauri migration: not prepared:', err.message);
+      return { ok: false, skipped: err.message };
+    }
+  }
+
   function stop() {
     platform.shortcuts.unregisterAll();
     powerWatch?.stop();
@@ -955,6 +989,7 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     applyRender,
     command: sendCommand,
     userSoundsDir,
+    prepareTauriMigration,
     menu: { labels: () => menuLabels(), click: menuClick },
     power: () => powerWatch,
     overlay: () => overlay,

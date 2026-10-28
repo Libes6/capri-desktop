@@ -16,6 +16,7 @@ const path = require('node:path');
 const { createPeer } = require('./rpc');
 const { createSidecarPlatform } = require('../src/main/platform/sidecar');
 const { createDebugHandler } = require('./debug');
+const migrate = require('../src/main/migrate');
 
 // stdout is the protocol's: whatever the core prints with console.log / info goes to stderr
 console.log = console.info = console.debug = (...args) => console.error(...args);
@@ -63,7 +64,16 @@ async function main() {
   await platform.init(); // the key store's master key and the like: the synchronous methods answer from it
   // CAPRI_DEBUG=1: the dev routes of the bridge (debug.js); Rust honours its own debug requests on the same variable
   const dev = Boolean(process.env.CAPRI_DEBUG);
-  const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined, dev });
+  // TAURI-09: what the Electron build kept for the user (config, memory, sounds, API keys sealed for us), the
+  // login item and the hooks' old commands. Before the core reads its config; never throws, never blocks the start.
+  const userData = platform.paths.get('userData');
+  const moved = migrate.startMigration({ platform, log, appVersion: hello.version });
+  const migration = moved.keys?.lost?.length ? {
+    keysLost: moved.keys.lost,
+    noticeDue: () => migrate.noticeDue(userData),
+    noticeShown: () => migrate.noticeShown(userData),
+  } : null;
+  const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined, dev, migration });
 
   // The one door in (src/main/dispatch.js): a refusal is a ProtocolError, never a crash. A command that
   // sends and expects nothing back just logs.
