@@ -246,14 +246,14 @@ test('Windows: a config held open (rename refused) is still written, in place', 
 });
 
 test('macOS app menu: Cmd+W / Cmd+M never reach the overlay; no default menu outside --dev elsewhere', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
-  const menu = src.slice(src.indexOf('function appMenu()'), src.indexOf('function main()'));
-  const dev = /\.\.\.\(DEV \? \[\{ label: 'Dev', submenu: \[\{ role: 'reload' \}, \{ role: 'toggleDevTools' \}\] \}\] : \[\]\)/;
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'platform', 'electron.js'), 'utf8');
+  const menu = src.slice(src.indexOf('function appMenu()'), src.indexOf("    id: 'electron'"));
+  const dev = /\.\.\.\(dev \? \[\{ label: 'Dev', submenu: \[\{ role: 'reload' \}, \{ role: 'toggleDevTools' \}\] \}\] : \[\]\)/;
   assert.doesNotMatch(menu.replace(dev, ''), /role: '(close|minimize|reload|forceReload|toggleDevTools)'/);
-  assert.match(menu, /win !== overlay && win\.close\(\)/);
-  assert.match(menu, /win !== overlay && win\.minimize\(\)/);
+  assert.match(menu, /win !== overlayWin && win\.close\(\)/);
+  assert.match(menu, /win !== overlayWin && win\.minimize\(\)/);
   assert.match(menu, dev);
-  assert.match(src, /else if \(!DEV\) Menu\.setApplicationMenu\(null\)/);
+  assert.match(src, /else if \(!dev\) Menu\.setApplicationMenu\(null\)/);
 });
 
 // CAPRI-05: her initiative, picked in the window like her other choices

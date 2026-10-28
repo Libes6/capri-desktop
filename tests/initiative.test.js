@@ -305,6 +305,6 @@ test('brain: her language changed at run time, her click lines follow it and sti
 
 test('settings: the tray reads an unknown initiative as normal, like her settings window', () => {
   const fs = require('node:fs');
-  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'tray-menu.js'), 'utf8');
   assert.match(src, /\['quiet', 'active'\]\.includes\(cfg\.initiative\) \? cfg\.initiative : 'normal'/);
 });
