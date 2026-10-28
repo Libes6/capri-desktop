@@ -22,7 +22,7 @@ export class Voice {
 
   ensure() {
     if (this.ctx) return this.ctx;
-    const ctx = new AudioContext();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)(); // WebKit before 14.1 only has the prefix
     this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = this.volume;

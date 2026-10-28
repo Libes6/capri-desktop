@@ -6,7 +6,8 @@
 // read back: the window knows whether one is saved, nothing more. Keyboard: Tab moves through, the
 // arrows/Home/End move between sections, Escape closes the window.
 
-const host = window.settingsHost;
+import { settingsHost as host } from './host.js';
+
 const tabs = document.getElementById('tabs');
 const panels = document.getElementById('panels');
 const title = document.getElementById('title');
