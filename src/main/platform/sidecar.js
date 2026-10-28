@@ -14,7 +14,7 @@
 //
 //   rpc: a sidecar/rpc.js peer
 //   hello: what Rust says of itself first (see src-tauri/src/sidecar.rs `hello`): identifier, name,
-//          version, paths, screens, cursor, packaged
+//          version, paths, screens, cursor, packaged, updater (TAURI-10: { mode, reason })
 //   root: the project folder in dev, the resources folder when packaged
 
 const { EventEmitter } = require('node:events');
@@ -41,6 +41,8 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
   const quitHandlers = [];
   const ipc = { on: new Map(), handle: new Map() };
   let overlay = null;
+  const updaterCalls = new Map(); // id -> { resolve, reject, progress, timer }: what Rust (updater.rs) has been asked
+  let updaterSeq = 0;
   let secondInstance = () => {};
 
   const inside = (p, b) => p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
@@ -63,10 +65,50 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       for (const fn of quitHandlers) { try { fn(); } catch (err) { log(`on quit: ${err.message}`); } }
     } else if (method === 'power') {
       power.emit(params.event);
+    } else if (method === 'updater.progress') {
+      updaterCalls.get(params.id)?.progress?.(params.received, params.total);
+    } else if (method === 'updater.result') {
+      settleUpdater(params);
     } else {
       log(`unknown notification ${method}`);
     }
   }
+
+  // The updater (src-tauri/src/updater.rs) is asked with a notification and answers with another, so a
+  // download never holds the line to Rust. A call that is not answered ends at its time limit.
+  function settleUpdater({ id, ok, result, error }) {
+    const call = updaterCalls.get(id);
+    if (!call) return;
+    updaterCalls.delete(id);
+    clearTimeout(call.timer);
+    if (ok) return call.resolve(result ?? null);
+    const category = error?.category;
+    call.reject(Object.assign(new Error(error?.message || 'update failed'), {
+      code: category === 'signature' ? 'ERR_CAPRI_SIGNATURE' : category === 'network' ? 'ERR_CAPRI_NETWORK' : 'ERR_CAPRI_UPDATE',
+      ...(error?.reason && { reason: error.reason }),
+    }));
+  }
+
+  function updaterCall(method, { progress, timeoutMs }) {
+    const id = ++updaterSeq;
+    return new Promise((resolve, reject) => {
+      const call = { resolve, reject, progress, timer: null };
+      const arm = () => {
+        clearTimeout(call.timer);
+        call.timer = setTimeout(() => {
+          updaterCalls.delete(id);
+          reject(Object.assign(new Error(`${method}: no answer in ${Math.round(timeoutMs / 1000)} s`), { code: 'ERR_CAPRI_NETWORK' }));
+        }, timeoutMs);
+        call.timer.unref?.();
+      };
+      arm();
+      if (progress) call.progress = (received, total) => { arm(); progress(received, total); }; // alive while bytes come
+      updaterCalls.set(id, call);
+      tell(method, { id });
+    });
+  }
+
+  const updaterInfo = hello.updater || { mode: 'disabled', reason: 'dev' };
 
   function overlayHandle(initial, label) {
     let bounds = { ...initial };
@@ -216,8 +258,18 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       handle: (channel, fn) => ipc.handle.set(channel, fn),
     },
 
+    // tauri-plugin-updater, driven by Rust (updates.js reads `transport` to pick this one)
     updater: {
-      get: () => { throw new Error('updater: not in the Tauri shell yet'); },
+      transport: 'tauri',
+      get: () => ({
+        tauri: {
+          // { mode: 'install' | 'notify' | 'disabled', reason, test }: decided by Rust from its configuration
+          status: updaterInfo,
+          check: () => updaterCall('updater.check', { timeoutMs: 60 * 1000 }),
+          download: (progress) => updaterCall('updater.download', { progress, timeoutMs: 2 * 60 * 1000 }),
+          install: () => updaterCall('updater.install', { timeoutMs: 5 * 60 * 1000 }),
+        },
+      }),
     },
 
     native: null,

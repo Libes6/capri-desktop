@@ -5,7 +5,9 @@
 // the staged folder keeps the repository's layout and holds only what they need:
 //   src-tauri/frontend/src/renderer/**   the pages, scripts, styles
 //   src-tauri/frontend/assets/**         her pictures
-//   src-tauri/frontend/node_modules/@fontsource/<font>/files/<the files tokens.css names>
+//   src-tauri/frontend/vendor/@fontsource/<font>/files/<the files tokens.css names>
+//     (`vendor`, not `node_modules`: the Tauri CLI that bundles refuses a frontendDist with a node_modules
+//     folder; the staged styles name ../../../vendor/ instead, TAURI-10)
 // and the window opens src/renderer/index.html.  node scripts/stage-frontend.js [--out dir]
 
 const fs = require('node:fs');
@@ -41,10 +43,15 @@ function stage(out = path.join(ROOT, 'src-tauri', 'frontend')) {
   fs.rmSync(out, { recursive: true, force: true });
   copyDir(path.join(ROOT, 'src', 'renderer'), path.join(out, 'src', 'renderer'));
   copyDir(path.join(ROOT, 'assets'), path.join(out, 'assets'));
+  const styles = path.join(out, 'src', 'renderer', 'styles');
+  for (const css of fs.readdirSync(styles).filter((f) => f.endsWith('.css'))) {
+    const file = path.join(styles, css);
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/(url\(\s*['"]?[^'")]*?)node_modules\//g, '$1vendor/'));
+  }
   const fonts = fontFiles();
   for (const file of fonts) {
     if (!fs.existsSync(file)) throw new Error(`missing font file ${path.relative(ROOT, file)} (npm install)`);
-    const rel = path.relative(ROOT, file);
+    const rel = path.relative(ROOT, file).replace(/^node_modules(?=[\\/])/, 'vendor');
     fs.mkdirSync(path.dirname(path.join(out, rel)), { recursive: true });
     fs.copyFileSync(file, path.join(out, rel));
   }

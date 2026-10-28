@@ -1,5 +1,7 @@
 # Capri: in-app updates (CAPRI-11)
 
+> The Tauri build updates through `tauri-plugin-updater`, same controller and rules: [TAURI_UPDATES.md](TAURI_UPDATES.md).
+
 Installed copies of Capri learn about a new **published** release of the fork
 [Libes6/capri-desktop](https://github.com/Libes6/capri-desktop/releases) and update from it. The behaviour follows
 the user's Gustaf project (`docs/release.md` → Application behavior, `docs/updater-smoke.md`, `UpdateController`);

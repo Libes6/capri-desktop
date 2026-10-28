@@ -29,7 +29,8 @@ The sidecar platform (`src/main/platform/sidecar.js`) answers what the system ca
 | Method | Now | Task |
 |---|---|---|
 | `tray.create`, `app.installAppMenu`, `windows.createSettings` (a closed controller), `autostart.*`, `shortcuts.*` | unsupported | TAURI-06 |
-| `secrets.*` (isAvailable is false: **keys are then stored as plain text in config.json**, as Electron does when its encryption is unavailable), `capture.screen`, `clipboard.writeImage`, `shell.*` (links and files do not open), `power.*`, `dialogs.pickFolder`, `app.appForProtocol`, `overlay.capture`/`nativeHandle`/`mediaSourceId` (macOS window watcher), `windows.createDemoTerminal`, `updater` | unsupported | TAURI-07 |
+| `secrets.*` (isAvailable is false: **keys are then stored as plain text in config.json**, as Electron does when its encryption is unavailable), `capture.screen`, `clipboard.writeImage`, `shell.*` (links and files do not open), `power.*`, `dialogs.pickFolder`, `app.appForProtocol`, `overlay.capture`/`nativeHandle`/`mediaSourceId` (macOS window watcher), `windows.createDemoTerminal` | unsupported | TAURI-07 |
+| `updater` | tauri-plugin-updater through Rust (`updater.rs`) | TAURI-10 done, see [TAURI_UPDATES.md](TAURI_UPDATES.md) |
 | Hover, chat focus, several screens, mixed DPI on Windows | minimal | TAURI-05 |
 
 The core also reads files next to its sources (the macOS and Windows window-watch helpers, `windows.ps1`); the bundle does not carry them (TAURI-07 decides whether the watchers run from Rust or from the sidecar with resources).

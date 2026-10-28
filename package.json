@@ -27,6 +27,8 @@
     "protocol:export": "node scripts/export-protocol.js",
     "test:smoke": "node scripts/smoke-test.js",
     "updater:smoke": "node scripts/updater-smoke.js",
+    "tauri:updater-smoke": "node scripts/updater-smoke-tauri.js",
+    "tauri:release-manifest": "node scripts/release-manifest.js",
     "dist:win": "electron-builder --win --x64 --publish never",
     "dist:linux": "electron-builder --linux --x64 --publish never",
     "dist:mac": "electron-builder --mac --arm64 --publish never",

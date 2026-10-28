@@ -9,7 +9,7 @@ npm run tauri:test     # cargo test (RPC layer, sidecar supervisor, user-sound p
 npm run tauri:stage    # only the pages     npm run tauri:sidecar    # only the sidecar executable
 ```
 
-Her pages are Tauri's `frontendDist` (`src-tauri/frontend/`, generated, not committed): `scripts/stage-frontend.js` copies `src/renderer`, `assets` and the font files her styles name, keeping the repository layout, so the relative paths (`../../assets/...`, `../../../node_modules/@fontsource/...`) work as they do in Electron. They are embedded when Cargo builds: **a change to a page needs `npm run tauri:dev` again** (it restages, Cargo rebuilds only what changed).
+Her pages are Tauri's `frontendDist` (`src-tauri/frontend/`, generated, not committed): `scripts/stage-frontend.js` copies `src/renderer`, `assets` and the font files her styles name, keeping the repository layout, so the relative paths (`../../assets/...`, `../../../node_modules/@fontsource/...` in the repository; the staged styles say `vendor/` instead, because the Tauri bundler refuses a node_modules folder in frontendDist) work as they do in Electron. They are embedded when Cargo builds: **a change to a page needs `npm run tauri:dev` again** (it restages, Cargo rebuilds only what changed).
 
 ## Where things go
 

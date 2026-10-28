@@ -10,6 +10,7 @@ mod mac;
 mod overlay;
 pub mod rpc;
 pub mod sidecar;
+pub mod updater;
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -69,6 +70,7 @@ impl Bridge {
             "version": app.package_info().version.to_string(),
             "tauri": tauri::VERSION,
             "packaged": packaged,
+            "updater": updater::status(app),
             "paths": {
                 "userData": user_data, "home": path(p.home_dir()), "desktop": path(p.desktop_dir()),
                 "documents": path(p.document_dir()), "downloads": path(p.download_dir()), "pictures": path(p.picture_dir()),
@@ -121,6 +123,17 @@ impl Handler for Bridge {
                     }
                     app.exit(code);
                 });
+            }
+            m if m.starts_with("updater.") => {
+                let sidecar = self.sidecar.get().cloned();
+                let notify: updater::Notify = Arc::new(move |method, params| {
+                    if let Some(s) = &sidecar {
+                        s.notify(method, params);
+                    }
+                });
+                if !updater::handle(&self.app, m, &params, notify) {
+                    eprintln!("[capri] unknown updater call from the core: {m}");
+                }
             }
             "app.focus" => {} // TAURI-05: the chat takes the keyboard
             "ready" => println!("[capri] core ready (sidecar pid {})", params["pid"]),
@@ -219,6 +232,9 @@ pub fn run() {
             };
             std::fs::create_dir_all(&user_data)?;
             USER_DATA.set(user_data).ok();
+
+            // updates exist only in a provisioned build (a public key and https endpoints, updater.rs)
+            updater::initialize(app)?;
 
             if std::env::var_os("CAPRI_DEBUG_STDIN").is_some() {
                 debug_stdin(app.handle().clone());
