@@ -4,8 +4,10 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const hooksCommand = require('../src/main/hooks-command');
 const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd', 'Interrupt', 'PreCompact', 'SubagentStart', 'SubagentStop'];
 const MARK = 'capri-codex-hook.js';
+const isCapri = (h) => hooksCommand.isCapriCommand(h?.command, 'codex');
 
 function settingsPath() {
   return path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'hooks.json');
@@ -16,7 +18,7 @@ function status() {
   try {
     const settings = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
     const events = Object.entries(settings.hooks || {}).filter(([, groups]) =>
-      Array.isArray(groups) && groups.some((g) => g?.hooks?.some((h) => String(h?.command || '').includes(MARK))))
+      Array.isArray(groups) && groups.some((g) => g?.hooks?.some(isCapri)))
       .map(([event]) => event);
     return { file, installed: EVENTS.every((event) => events.includes(event)), events };
   } catch (err) {
@@ -40,7 +42,7 @@ function configure(uninstall = false) {
     }
     // Remove only our command, even if it shares a group with another hook.
     settings.hooks[event] = groups.flatMap((g) => {
-      const hooks = g.hooks.filter((h) => !String(h?.command || '').includes(MARK));
+      const hooks = g.hooks.filter((h) => !isCapri(h));
       if (hooks.length === g.hooks.length) return [g];
       return hooks.length ? [{ ...g, hooks }] : [];
     });
@@ -48,7 +50,7 @@ function configure(uninstall = false) {
   }
   const script = path.resolve(__dirname, '..', 'hooks', MARK)
     .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`).replace(/\\/g, '/');
-  const command = `node "${script}"`;
+  const command = hooksCommand.hookCommand('codex', { legacy: () => `node "${script}"` });
   if (!uninstall) {
     for (const event of EVENTS) {
       settings.hooks[event] ||= [];
@@ -65,7 +67,10 @@ function configure(uninstall = false) {
   return { file, command };
 }
 
-module.exports = { configure, EVENTS, status, install: () => configure(), uninstall: () => configure(true) };
+// Rewrite old Electron/Node entries to the capri-hook binary (no-op without the binary).
+const migrate = (bin) => hooksCommand.migrateFile(settingsPath(), 'codex', bin);
+
+module.exports = { configure, EVENTS, status, migrate, install: () => configure(), uninstall: () => configure(true) };
 if (require.main === module) {
   try {
     const uninstall = process.argv.includes('--uninstall');
