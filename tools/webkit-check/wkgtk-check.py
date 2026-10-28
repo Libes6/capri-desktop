@@ -14,6 +14,7 @@ wait = int(sys.argv[3]) if len(sys.argv) > 3 else 3000
 probe = sys.argv[4] if len(sys.argv) > 4 else ''
 errors = 0
 failed = False
+exit_code = 0
 
 CAPTURE = """
 (function(){const post=(l,t)=>window.webkit.messageHandlers.console.postMessage(JSON.stringify({l:l,t:String(t)}));
@@ -57,8 +58,9 @@ def snapshot():
         surface.write_to_png(out)
         print('[snapshot] %s' % out, flush=True)
         print('[summary] console errors: %d' % errors, flush=True)
-        Gtk.main_quit()
-        sys.exit(2 if failed else (1 if errors else 0))
+        global exit_code
+        exit_code = 2 if failed else (1 if errors else 0)
+        Gtk.main_quit()  # sys.exit() inside a GLib callback does not stop the process
     view.get_snapshot(WebKit2.SnapshotRegion.VISIBLE, WebKit2.SnapshotOptions.NONE, None, done)
     return False
 
@@ -79,4 +81,12 @@ def run_probe():
 
 view.load_uri(url)
 GLib.timeout_add(wait, run_probe)
+def timeout():
+    global exit_code
+    print('[timeout] page or snapshot did not finish', flush=True)
+    exit_code = 3
+    Gtk.main_quit()
+    return False
+GLib.timeout_add(wait + 60000, timeout)
 Gtk.main()
+sys.exit(exit_code)

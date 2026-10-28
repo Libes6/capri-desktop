@@ -27,7 +27,7 @@
 - `tools/webkit-check/fake-host.js` — фейковый host (конфиг, 2 экрана, view настроек, логирует команды; `window.__fakeEmit(scope, event, payload)` шлёт события).
 - `npm run check:webkit` (`tools/webkit-check/run.js`) — запускает обе страницы, падает при ошибках в консоли или если спрайт не нарисован.
 
-Скриншоты: `/private/tmp/claude-501/-Users-maksimkulakov-pet-capri-desktop/7ee437c7-daf3-4ddf-b88c-dcee7175039a/scratchpad/webkit/` (`settings.png`, `overlay.png` — установившийся кадр, `overlay-entrance-glitch.png` — кадр на 4-й секунде, во время входного глитча, `overlay-event.png` — после событий).
+Скриншоты `npm run check:webkit` кладёт в `tools/webkit-check/out/` (не в git; ниже описаны снимки, сделанные при первом прогоне, их файлов в репозитории нет: `settings.png`, `overlay.png` — установившийся кадр, `overlay-entrance-glitch.png` — кадр на 4-й секунде, во время входного глитча, `overlay-event.png` — после событий).
 
 Результаты (WKWebView):
 
@@ -49,7 +49,7 @@
 
 ## Не проверено
 
-- **WebKitGTK (Linux): не запускалось.** Готовы `.github/workflows/webkit-check.yml` (только `workflow_dispatch`; ubuntu-24.04, `xvfb`, `gir1.2-webkit2-4.1`, `python3-gi`, софт-рендер Mesa `LIBGL_ALWAYS_SOFTWARE=1`) и `tools/webkit-check/wkgtk-check.py` (GTK OffscreenWindow + WebKit2 4.1, печатает консоль/ошибки, пробный скрипт, PNG, код возврата). Скрипт и YAML проверены только синтаксически. Неизвестно: поднимется ли WebGL под Xvfb с llvmpipe, прозрачность окна, поведение mask/clip-path в версии webkit2gtk Ubuntu 24.04 (2.4x). Запустить вручную и приложить артефакт `webkitgtk-screenshots`.
+- **WebKitGTK (Linux): не запускалось.** Готовы `.github/workflows/webkit-check.yml` (только `workflow_dispatch`; ubuntu-24.04, `xvfb`, `gir1.2-webkit2-4.1`, `python3-gi`, софт-рендер Mesa `LIBGL_ALWAYS_SOFTWARE=1`) и `tools/webkit-check/wkgtk-check.py` (GTK OffscreenWindow + WebKit2 4.1, печатает консоль/ошибки, пробный скрипт, PNG, код возврата). Скрипт (py_compile) и YAML (парсер) проверены только синтаксически; API WebKit2 4.1 из скрипта не исполнялся. Неизвестно: поднимется ли WebGL под Xvfb с llvmpipe, прозрачность окна, поведение mask/clip-path в версии webkit2gtk Ubuntu 24.04 (2.4x). Запустить вручную и приложить артефакт `webkitgtk-screenshots`.
 - Windows WebView2 — Chromium, отдельно не проверялось.
 - Версии WebKit старше установленной: используются look-behind в регулярках и `oklch()`; они требуют Safari 16.4 / 15.4, то есть macOS с таким системным WebKit. Минимальную версию macOS для Tauri-сборки надо зафиксировать в TAURI-04/12.
 - Реальная прозрачность окна Tauri (`macOSPrivateApi`), пропуск кликов, звук после жеста пользователя в Tauri-окне, `window.__TAURI__`-мост — зона TAURI-00/04/05.
