@@ -10,12 +10,13 @@
 //   to Rust:   requests hello, overlay.create, overlay.setBounds; notifications emit, overlay.*, app.*
 //
 // Environment: CAPRI_ROOT (the project folder in dev; the bundle is self-contained otherwise),
-// CAPRI_PORT (the hooks bridge).
+// CAPRI_PORT (the hooks bridge), CAPRI_DEBUG (dev routes, debug.js).
 
 const path = require('node:path');
 const { createPeer } = require('./rpc');
 const { createSidecarPlatform } = require('../src/main/platform/sidecar');
 const { createCore } = require('../src/main/core');
+const { createDebugHandler } = require('./debug');
 
 // stdout is the protocol's: whatever the core prints with console.log / info goes to stderr
 console.log = console.info = console.debug = (...args) => console.error(...args);
@@ -46,7 +47,9 @@ async function main() {
 
   const hello = await peer.request('hello', {});
   platform = createSidecarPlatform({ rpc: peer, hello, root, log });
-  const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined });
+  // CAPRI_DEBUG=1: the dev routes of the bridge (debug.js); Rust honours its own debug requests on the same variable
+  const dev = Boolean(process.env.CAPRI_DEBUG);
+  const core = createCore({ platform, port: Number(process.env.CAPRI_PORT) || undefined, dev });
 
   // The one door in (src/main/dispatch.js): a refusal is a ProtocolError, never a crash. A command that
   // sends and expects nothing back just logs.
@@ -65,7 +68,8 @@ async function main() {
 
   core.applyRender();
   platform.app.onQuit(() => core.stop());
-  core.start({ debug: null });
+  platform.app.installAppMenu();
+  core.start({ debug: dev ? createDebugHandler({ core, platform }) : null });
   log(`core started (userData ${platform.paths.get('userData')})`);
   peer.notify('ready', { pid: process.pid });
 }

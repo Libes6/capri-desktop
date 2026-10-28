@@ -14,7 +14,7 @@ Her pages are Tauri's `frontendDist` (`src-tauri/frontend/`, generated, not comm
 ## Where things go
 
 - Rust's build folder is Cargo's `target/`: set `CARGO_TARGET_DIR` to keep it outside the repository (`src-tauri/target/` is ignored by git anyway).
-- Her data: `~/Library/Application Support/capri.desktop` (the identifier's folder; Electron's was `Capri`, moving it is TAURI-09). **`CAPRI_USER_DATA=<dir>` uses another profile**: use it for every try-out, with `CAPRI_PORT=<port>` for the hooks bridge (47823 by default, the real Capri's). Nothing else is written: no Login Items (autostart is not in the shell yet).
+- Her data: `~/Library/Application Support/capri.desktop` (the identifier's folder; Electron's was `Capri`, moving it is TAURI-09). **`CAPRI_USER_DATA=<dir>` uses another profile**: use it for every try-out, with `CAPRI_PORT=<port>` for the hooks bridge (47823 by default, the real Capri's). Autostart writes a LaunchAgent / the registry's Run key: for try-outs set **`CAPRI_AUTOSTART_FAKE=<file>`** (the state is that file's, the system is untouched).
 - `CAPRI_NODE` names the `node` that runs the sidecar when it is not on the GUI's PATH (an nvm node). `CAPRI_SIDECAR=<executable>` runs that file as the sidecar instead (the SEA one). `CAPRI_ROOT` is the project folder (set by `tauri:dev`).
 - Debug: with `CAPRI_DEBUG_STDIN=1` each line on stdin is JavaScript run in her page (the result is printed as `[eval] ...`); `!sidecar` prints its pid and state, `!kill` kills it (to see it come back), `!exit` quits.
 
@@ -32,3 +32,12 @@ On macOS she has no Dock icon (Accessory policy); the overlay window is level 10
 ## Windows and Linux
 
 Written but never run: the Rust and Node code is portable (`cfg(target_os)` only for the macOS window flags and the pointer read), the sidecar build has the platform branches. CI is TAURI-12. Known gaps there: mixed-DPI coordinates (the cursor and monitor positions are divided by one scale), `capri://usersounds/` is `http://capri.localhost/` on Windows (the core's URLs need a platform-made base).
+
+## Tray, menus, settings window, shortcuts, autostart (TAURI-06)
+
+- **Tray**: the core sends its menu as data on every rebuild (`tray.setMenu`, built by `platform/menu-wire.js`: items get ids `t<generation>.<n>`, callbacks stay in the sidecar); `src-tauri/src/menu.rs` turns it into a `tauri::menu` (a radio is a check item that stays checked), a click comes back as `tray.click { id, checked }`. The last two menus' ids stay good, so a click on a menu rebuilt while open still works. As in Electron: on macOS the icon opens the menu, on Windows/Linux a left click is her status and a right click opens it. Right click on her (`menu:open`) opens the same menu at the pointer.
+- **Settings window** (`settings_window.rs`): label `settings`, one at a time, `settings.html` as it is, 720x540 (min 480x360) centered in the work area, `#fcee0a`, shown when the page has loaded, only her own origin may be in it. The app is brought forward first (Accessory has no Dock icon). `owns(sender)` goes by the label; `capabilities/settings.json` gives it the bridge command and events, and Rust refuses a `scope` that is not the window's own.
+- **Application menu** (macOS): app + Quit, Edit, Window; Minimize / Close Window act on the focused window, never the overlay. None on Windows and Linux.
+- **Shortcuts**: `Control+Alt+C` (hide/show) through tauri-plugin-global-shortcut; a refused one is logged.
+- **Autostart**: tauri-plugin-autostart (macOS LaunchAgent, Windows Run key; Linux has none by decision, the core never asks).
+- **Debug** (`CAPRI_DEBUG=1`, sidecar/debug.js, on the bridge port): `POST /debug/menu {click:"label"}` (labels, click), `/debug/tray {fire:"id"}` (Rust's item list, click by id), `/debug/popup`, `/debug/settings {open, section, key, js}`. A second Capri with the same identifier exits at once (single instance): build a try-out copy with `TAURI_CONFIG='{"identifier":"capri.desktop.try"}' cargo build`.

@@ -10,6 +10,14 @@ const HEIGHT = 540;
 // the page colour of settings.css (--cp-yellow), so the window doesn't flash another colour while it loads
 const BACKGROUND = '#fcee0a';
 
+// the window's rectangle: its size, centered in the work area `a` ({ x, y, width, height }) when there is one
+function settingsBounds(a) {
+  if (!a) return { width: WIDTH, height: HEIGHT };
+  const width = Math.min(WIDTH, a.width);
+  const height = Math.min(HEIGHT, a.height);
+  return { x: Math.round(a.x + (a.width - width) / 2), y: Math.round(a.y + (a.height - height) / 2), width, height };
+}
+
 /**
  * @param {object} deps
  *   BrowserWindow: Electron's
@@ -24,13 +32,7 @@ function createSettingsWindow({ BrowserWindow, preload, url, view, area, focusAp
   // its page can go before the window does (closing, quitting): nothing is sent to it then
   const alive = () => Boolean(win && !win.isDestroyed() && !win.webContents.isDestroyed?.());
 
-  function bounds() {
-    const a = area?.();
-    if (!a) return { width: WIDTH, height: HEIGHT };
-    const width = Math.min(WIDTH, a.width);
-    const height = Math.min(HEIGHT, a.height);
-    return { x: Math.round(a.x + (a.width - width) / 2), y: Math.round(a.y + (a.height - height) / 2), width, height };
-  }
+  const bounds = () => settingsBounds(area?.());
 
   function bringForward() {
     if (win.isMinimized()) win.restore();
@@ -110,4 +112,4 @@ function createSettingsWindow({ BrowserWindow, preload, url, view, area, focusAp
   };
 }
 
-module.exports = { createSettingsWindow, WIDTH, HEIGHT };
+module.exports = { createSettingsWindow, settingsBounds, WIDTH, HEIGHT, BACKGROUND };
