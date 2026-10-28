@@ -1,0 +1,48 @@
+name: WebKitGTK check
+
+# TAURI-03: the renderer (overlay and settings window, against the fake host in tools/webkit-check)
+# in WebKitGTK, the engine Tauri uses on Linux. Manual only; uploads the screenshots.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  webkitgtk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install WebKitGTK, GTK bindings and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 libgl1-mesa-dri libegl1
+      - name: Install dependencies (fonts are npm packages)
+        run: npm ci --ignore-scripts
+      - name: Start the fake-host server
+        run: |
+          PORT=8765 node tools/webkit-check/server.js &
+          sleep 1
+      - name: Check the pages in WebKitGTK
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+        run: |
+          mkdir -p webkit-out
+          base=http://127.0.0.1:8765/src/renderer
+          status=0
+          xvfb-run -a -s "-screen 0 1280x800x24" python3 tools/webkit-check/wkgtk-check.py "$base/settings.html?fake=1" webkit-out/settings.png 3000 \
+            || status=1
+          xvfb-run -a -s "-screen 0 1280x800x24" python3 tools/webkit-check/wkgtk-check.py "$base/index.html?fake=1" webkit-out/overlay.png 14000 \
+            'const c=document.getElementById("sprite");const gl=c.getContext("webgl");let a;try{a=new (window.AudioContext||window.webkitAudioContext)().state}catch(e){a="ERR "+e}return JSON.stringify({webgl:gl&&gl.getParameter(gl.VERSION),lost:gl&&gl.isContextLost(),glError:gl&&gl.getError(),audio:a})' \
+            || status=1
+          exit $status
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webkitgtk-screenshots
+          path: webkit-out/

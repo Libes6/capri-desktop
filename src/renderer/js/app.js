@@ -18,7 +18,7 @@ import { fmt, reducedMotion } from './util.js';
 import { Initiative, occupied, pickLine } from './initiative.js';
 import { pause } from './pause.js';
 
-const host = window.host;
+import { host } from './host.js';
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {
