@@ -4,13 +4,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { createFakePlatform } = require('../src/main/platform/fake');
 
-function load(file, platform, electron, extra = {}) {
+function load(file, platform, extra = {}) {
   const module = { exports: {} };
   const filename = path.resolve(__dirname, '../src/main', file);
   const context = { module, exports: module.exports, process: { platform, env: {} },
     require(id) {
-      if (id === 'electron') return electron;
       if (id === 'node:path') return path.posix;
       if (id in extra) return extra[id];
       return require(id);
@@ -23,11 +23,14 @@ function load(file, platform, electron, extra = {}) {
 for (const platform of ['darwin', 'linux']) {
   test(`${platform}: file manager uses native paths, launch errors propagate, executable files need confirmation`, async () => {
     const opened = [];
-    const host = { app: { getPath: (key) => `/home/test/${key}` }, shell: {
-      openPath: async (file) => { opened.push(file); return ''; },
-      openExternal: async (url) => { opened.push(url); },
-    } };
-    const launch = load('launch.js', platform, host, { './apps': { powershell() { throw new Error('Windows helper invoked'); } } });
+    const host = createFakePlatform({ overrides: {
+      paths: { get: (key) => `/home/test/${key}` },
+      shell: {
+        openPath: async (file) => { opened.push(file); return ''; },
+        openExternal: async (url) => { opened.push(url); },
+      },
+    } });
+    const launch = load('launch.js', platform, { './apps': { powershell() { throw new Error('Windows helper invoked'); } } }).createLaunch({ platform: host });
     assert.equal((await launch.launchables()).length, 0);
     await launch.launch({ kind: 'known', id: 'explorer' });
     assert.equal(opened[0], '/home/test/home');
@@ -39,7 +42,7 @@ for (const platform of ['darwin', 'linux']) {
     assert.equal(launch.risky({ kind: 'folder', id: '/tmp/Test.app' }), true);
   });
   test(`${platform}: Ollama install never invokes winget`, async () => {
-    const setup = load('setup.js', platform, {}, { './ollama': {} });
+    const setup = load('setup.js', platform, { './ollama': {} });
     assert.equal((await setup.installOllama()).ok, false);
   });
 }

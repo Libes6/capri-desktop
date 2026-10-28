@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn: realSpawn } = require('node:child_process');
 const { parseLine, toUpdate, overlayWindowId, startMacWindowWatch } = require('../src/main/mac/window-watch');
+const { createFakePlatform } = require('../src/main/platform/fake');
 
 const line = (o) => JSON.stringify({ v: 1, fg: null, displays: [], wins: [], ...o });
 
@@ -67,13 +68,13 @@ test('mac update: shifted into the overlay, off-screen windows dropped, Windows-
 });
 
 test('mac overlay window id comes from the media source id', () => {
-  assert.equal(overlayWindowId({ getMediaSourceId: () => 'window:74027:0' }), 74027);
-  assert.equal(overlayWindowId({ getMediaSourceId: () => 'screen:1:0' }), null);
-  assert.equal(overlayWindowId({ getMediaSourceId() { throw new Error('destroyed'); } }), null);
+  assert.equal(overlayWindowId({ mediaSourceId: () => 'window:74027:0' }), 74027);
+  assert.equal(overlayWindowId({ mediaSourceId: () => 'screen:1:0' }), null);
+  assert.equal(overlayWindowId({ mediaSourceId() { throw new Error('destroyed'); } }), null);
 });
 
 function fakeOverlay() {
-  return { isDestroyed: () => false, getBounds: () => ({ x: 0, y: 0, width: 1000, height: 800 }), getMediaSourceId: () => 'window:99:0' };
+  return { isAlive: () => true, bounds: () => ({ x: 0, y: 0, width: 1000, height: 800 }), mediaSourceId: () => 'window:99:0' };
 }
 
 function fakeSpawn(calls) {
@@ -372,26 +373,24 @@ test('windows.js on macOS: no helper, no listeners, tracking off', () => {
 test('windows.js on macOS: startWindowWatch runs the real adapter, a missing helper keeps the base overlay', () => {
   const { windows, spawned } = loadWindowsOnMac({ helperMissing: true });
   const states = [];
-  const watch = windows.startWindowWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok) });
+  const watch = windows.startWindowWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok), platform: createFakePlatform() });
   assert.deepEqual(states, [false]);
   assert.equal(spawned.length, 0);
   watch.refresh();
   watch.stop();
 });
 
-// windows.js as on a Mac, with Electron's screen and powerMonitor stood in for
+// windows.js as on a Mac, with the platform's screens and power stood in for (the fake's)
 function loadWindowsOnMac({ helperMissing = false } = {}) {
   const vm = require('node:vm');
   const module = { exports: {} };
   const filename = path.resolve(__dirname, '../src/main/windows.js');
   const spawned = [];
-  const electron = { screen: new EventEmitter(), powerMonitor: new EventEmitter() };
   const quiet = { log() {}, error() {} };
   const context = {
     module, exports: module.exports, __dirname: path.dirname(filename), console: quiet, Buffer, setTimeout, clearTimeout,
     process: { platform: 'darwin', env: {}, pid: 1 },
     require(id) {
-      if (id === 'electron') return electron;
       if (id === 'node:child_process') return { spawn: (...a) => { spawned.push(a); throw new Error('spawned'); } };
       if (id.endsWith(path.join('mac', 'window-watch.js')) && helperMissing) {
         const real = require(id);

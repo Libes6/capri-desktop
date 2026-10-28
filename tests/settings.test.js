@@ -219,12 +219,12 @@ test('the settings page reaches main only through its own preload', () => {
   const html = fs.readFileSync(path.join(root, 'src/renderer/settings.html'), 'utf8');
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /script-src 'self'/);
-  const main = fs.readFileSync(path.join(root, 'src/main/main.js'), 'utf8');
+  const main = fs.readFileSync(path.join(root, 'src/main/core.js'), 'utf8');
   for (const channel of channels) {
     // its handler checks the sender is the settings window, on its first lines
-    const at = main.indexOf(`ipcMain.on('${channel}'`) >= 0 ? main.indexOf(`ipcMain.on('${channel}'`) : main.indexOf(`ipcMain.handle('${channel}'`);
+    const at = main.indexOf(`ipcOn('${channel}'`) >= 0 ? main.indexOf(`ipcOn('${channel}'`) : main.indexOf(`ipcHandle('${channel}'`);
     assert.ok(at >= 0, channel);
-    assert.match(main.slice(at, at + 160), /settings\?\.owns\(e\.sender\)/, channel);
+    assert.match(main.slice(at, at + 160), /settings\?\.owns\(sender\)/, channel);
   }
 });
 

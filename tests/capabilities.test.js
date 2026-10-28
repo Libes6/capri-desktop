@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 const { FEATURES, detect, linuxSession, createCapabilities } = require('../src/main/capabilities');
+const { createFakePlatform } = require('../src/main/platform/fake');
 
 const HELPER = '/app/src/main/windows.ps1';
 const exists = (file) => file === HELPER;
@@ -78,7 +79,7 @@ test('unknown features are refused, the renderer only gets booleans', () => {
 
 test('closing an app outside Windows never reports it closed nor runs PowerShell', async () => {
   for (const platform of ['darwin', 'linux']) {
-    const apps = load('apps.js', platform, {}, { 'node:child_process': { execFile() { throw new Error('PowerShell invoked'); } } });
+    const apps = load('apps.js', platform, { 'node:child_process': { execFile() { throw new Error('PowerShell invoked'); } } });
     assert.equal((await apps.list()).length, 0);
     assert.equal(await apps.find('discord'), null);
     // (objects from the module's own context: compared by their fields)
@@ -98,24 +99,23 @@ test('the window watcher reports when it runs and when it gives up', () => {
     return child;
   };
   const overlay = {
-    getNativeWindowHandle: () => Buffer.alloc(8), isDestroyed: () => false, getBounds: () => ({ x: 0, y: 0, width: 100, height: 100 }),
+    nativeHandle: () => Buffer.alloc(8), isAlive: () => true, bounds: () => ({ x: 0, y: 0, width: 100, height: 100 }),
   };
-  const screen = { screenToDipRect: (_w, r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }) };
-  const windows = load('windows.js', 'win32', { screen }, { 'node:child_process': { spawn } }, { setTimeout: (fn) => fn() });
-  windows.startWindowWatch({ overlay, onUpdate() {}, onState: (ok) => states.push(ok) });
+  const platform = createFakePlatform({ overrides: { screens: { toDip: (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }) } } });
+  const windows = load('windows.js', 'win32', { 'node:child_process': { spawn } }, { setTimeout: (fn) => fn() });
+  windows.startWindowWatch({ overlay, onUpdate() {}, onState: (ok) => states.push(ok), platform });
   children[0].emit('error', new Error('spawn powershell.exe ENOENT'));
   for (let i = 0; i < 4; i++) children[i].emit('close'); // three restarts, then it stops trying
   assert.equal(children.length, 4);
   assert.deepEqual(states, [false]);
 });
 
-function load(file, platform, electron, extra = {}, globals = {}) {
+function load(file, platform, extra = {}, globals = {}) {
   const module = { exports: {} };
   const filename = path.resolve(__dirname, '../src/main', file);
   const context = {
     module, exports: module.exports, __dirname: path.dirname(filename), process: { platform, env: {}, pid: 1 }, console, Buffer, ...globals,
     require(id) {
-      if (id === 'electron') return electron;
       if (id in extra) return extra[id];
       return require(id);
     },

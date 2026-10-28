@@ -12,7 +12,6 @@
 const path = require('node:path');
 const readline = require('node:readline');
 const { spawn } = require('node:child_process');
-const { screen } = require('electron');
 
 // in the installed app it sits next to the app archive (asarUnpack), where PowerShell can read it
 const SCRIPT = path.join(__dirname, 'windows.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
@@ -29,8 +28,8 @@ function createFeed({ overlay, onUpdate, toDip }) {
 
   // the snapshot as seen from her window, wherever it is now
   const send = () => {
-    if (!last || overlay.isDestroyed()) return;
-    const bounds = overlay.getBounds();
+    if (!last || !overlay.isAlive()) return;
+    const bounds = overlay.bounds();
     const wins = last.wins
       .map((w) => toOverlay(w, bounds))
       // only what overlaps Capri's screen
@@ -51,14 +50,14 @@ function createFeed({ overlay, onUpdate, toDip }) {
 }
 
 // Linux: X11 only (`session` from capabilities.linuxSession(); never just because it is Linux).
-function startLinuxWatch({ overlay, onUpdate, onState, session }) {
+function startLinuxWatch({ overlay, onUpdate, onState, session, platform }) {
   // required by its full path, so the module loads the same however this file was loaded
   const { startX11Watch } = require(path.join(__dirname, 'linux', 'x11-watch.js'));
   const x11 = require(path.join(__dirname, 'linux', 'x11.js'));
-  const feed = createFeed({ overlay, onUpdate, toDip: (win) => x11.pxToDip(win, screen.getAllDisplays()) });
+  const feed = createFeed({ overlay, onUpdate, toDip: (win) => x11.pxToDip(win, platform.screens.all()) });
   const watch = startX11Watch({
     session,
-    self: { id: x11.selfXid(overlay.getNativeWindowHandle()) },
+    self: { id: x11.selfXid(overlay.nativeHandle()) },
     onSnapshot: feed.push,
     onState,
   });
@@ -68,7 +67,7 @@ function startLinuxWatch({ overlay, onUpdate, onState, session }) {
 // macOS: the Swift helper (mac/window-watch.js), paused while the Mac sleeps or its screen is locked
 // (its snapshots are not to be trusted then), and started afresh when it wakes, is unlocked or its
 // screens change: also how a helper that gave up gets another chance, on a system event only.
-// `power`/`screens`: Electron's powerMonitor and screen (event emitters), `later`: for the tests.
+// `power`/`screens`: the platform's (event emitters), `later`: for the tests.
 const SETTLE = { resume: 1500, 'unlock-screen': 1000, screens: 1000 }; // ms before a fresh helper
 
 function startMacWatch({
@@ -130,11 +129,11 @@ function startMacWatch({
 
 // onState(ok): the watcher runs (true), or gave up after its restarts (false): capabilities.js
 // session (Linux): 'x11' | 'xwayland' | 'wayland' | null, from capabilities.js
-function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = null }) {
-  if (process.platform === 'linux') return startLinuxWatch({ overlay, onUpdate, onState, session });
+// platform: the screens and the power events (platform/index.js)
+function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = null, platform }) {
+  if (process.platform === 'linux') return startLinuxWatch({ overlay, onUpdate, onState, session, platform });
   if (process.platform === 'darwin') {
-    const { powerMonitor } = require('electron');
-    return startMacWatch({ overlay, onUpdate, onState, power: powerMonitor, screens: screen });
+    return startMacWatch({ overlay, onUpdate, onState, power: platform.power, screens: platform.screens });
   }
   if (process.platform !== 'win32') return { stop() {}, refresh() {} };
 
@@ -143,12 +142,12 @@ function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = nul
   let restarts = 0;
   let retry = null; // the pending restart, cancelled by stop()
 
-  const handle = overlay.getNativeWindowHandle();
+  const handle = overlay.nativeHandle();
   const self = handle.length >= 8 ? handle.readBigUInt64LE(0) : BigInt(handle.readUInt32LE(0));
 
   const feed = createFeed({
     overlay, onUpdate,
-    toDip: (win) => screen.screenToDipRect(null, { x: win.x, y: win.y, width: win.w, height: win.h }),
+    toDip: (win) => platform.screens.toDip({ x: win.x, y: win.y, width: win.w, height: win.h }),
   });
 
   const start = () => {

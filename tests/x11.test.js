@@ -6,6 +6,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 const x11 = require('../src/main/linux/x11');
 const { startX11Watch, GIVE_UP } = require('../src/main/linux/x11-watch');
+const { createFakePlatform } = require('../src/main/platform/fake');
+
+// Electron's screens as the old stand-in had them: none, and a rect is its own DIP rect
+const platform = createFakePlatform({ overrides: { screens: { all: () => [], toDip: (r) => r } } });
 
 // Output as xprop/xwininfo (x11-utils 7.7) print it, on a reparenting EWMH window manager
 // (written from the tools' formats, not captured on a live desktop: see docs/LINUX_WINDOW_TRACKING.md).
@@ -347,12 +351,10 @@ function loadWindows(platform, { spawn, setTimeout: later = setTimeout, clearTim
   const module = { exports: {} };
   const filename = path.resolve(__dirname, '../src/main/windows.js');
   const spawned = [];
-  const electron = { screen: { getAllDisplays: () => [], screenToDipRect: (_w, r) => r } };
   const context = {
     module, exports: module.exports, __dirname: path.dirname(filename), console: quiet, Buffer, setTimeout: later, clearTimeout: cancel,
     process: { platform, env: {}, pid: 1 },
     require(id) {
-      if (id === 'electron') return electron;
       if (id === 'node:child_process') return { spawn: (...a) => { spawned.push(a); if (spawn) return spawn(...a); throw new Error('spawned'); } };
       return require(id);
     },
@@ -363,10 +365,10 @@ function loadWindows(platform, { spawn, setTimeout: later = setTimeout, clearTim
 
 test('windows.js on Linux: XWayland and Wayland never start tracking nor PowerShell', () => {
   const { windows, spawned } = loadWindows('linux');
-  const overlay = { getNativeWindowHandle: () => Buffer.alloc(8), isDestroyed: () => false, getBounds: () => ({ x: 0, y: 0, width: 10, height: 10 }) };
+  const overlay = { nativeHandle: () => Buffer.alloc(8), isAlive: () => true, bounds: () => ({ x: 0, y: 0, width: 10, height: 10 }) };
   for (const session of ['xwayland', 'wayland', null]) {
     const states = [];
-    const watch = windows.startWindowWatch({ overlay, session, onUpdate() {}, onState: (ok) => states.push(ok) });
+    const watch = windows.startWindowWatch({ overlay, session, onUpdate() {}, onState: (ok) => states.push(ok), platform });
     assert.deepEqual(states, [false]);
     watch.refresh();
     watch.stop();
@@ -377,7 +379,7 @@ test('windows.js on Linux: XWayland and Wayland never start tracking nor PowerSh
 test('feed: physical pixels to the overlay, only what overlaps her screen', () => {
   const { windows } = loadWindows('win32');
   const got = [];
-  const overlay = { isDestroyed: () => false, getBounds: () => ({ x: 100, y: 0, width: 800, height: 600 }) };
+  const overlay = { isAlive: () => true, bounds: () => ({ x: 100, y: 0, width: 800, height: 600 }) };
   const feed = windows.createFeed({ overlay, onUpdate: (d) => got.push(d), toDip: (w) => ({ x: w.x / 2, y: w.y / 2, width: w.w / 2, height: w.h / 2 }) });
   feed.push({ fg: 5, wins: [{ id: 5, x: 400, y: 200, w: 600, h: 400, max: false }, { id: 6, x: 4000, y: 0, w: 400, h: 400, max: false }] });
   assert.equal(got.length, 1);
@@ -403,10 +405,10 @@ test('windows.js on Windows: the helper\'s lines to the overlay, restarts, then 
   });
   const handle = Buffer.alloc(8);
   handle.writeBigUInt64LE(0x1234n);
-  const overlay = { getNativeWindowHandle: () => handle, isDestroyed: () => false, getBounds: () => ({ x: 0, y: 0, width: 1920, height: 1040 }) };
+  const overlay = { nativeHandle: () => handle, isAlive: () => true, bounds: () => ({ x: 0, y: 0, width: 1920, height: 1040 }) };
   const states = [];
   const got = [];
-  const watch = windows.startWindowWatch({ overlay, onUpdate: (d) => got.push(d), onState: (ok) => states.push(ok) });
+  const watch = windows.startWindowWatch({ overlay, onUpdate: (d) => got.push(d), onState: (ok) => states.push(ok), platform });
   assert.equal(spawned[0][0], 'powershell.exe');
   assert.equal(spawned[0][1].slice(-2).join(' '), '4660 1'); // her hwnd, her pid
   children[0].stdout.write('not json\n');
@@ -444,7 +446,7 @@ test('windows.js on Windows: stop() kills the helper and does not restart it', (
     },
     setTimeout: (fn) => later.push(fn),
   });
-  const watch = windows.startWindowWatch({ overlay: { getNativeWindowHandle: () => Buffer.alloc(8) }, onUpdate() {} });
+  const watch = windows.startWindowWatch({ overlay: { nativeHandle: () => Buffer.alloc(8) }, onUpdate() {}, platform });
   watch.stop();
   assert.equal(child.killed, 1);
   assert.equal(later.length, 0);
@@ -466,7 +468,7 @@ test('windows.js on Windows: stop() while a restart is pending cancels it', () =
     setTimeout: (fn) => { timers.set(next, fn); return next++; },
     clearTimeout: (id) => timers.delete(id),
   });
-  const watch = windows.startWindowWatch({ overlay: { getNativeWindowHandle: () => Buffer.alloc(8) }, onUpdate() {} });
+  const watch = windows.startWindowWatch({ overlay: { nativeHandle: () => Buffer.alloc(8) }, onUpdate() {}, platform });
   children[0].emit('close'); // the helper died: a restart is due in 3 s
   assert.equal(timers.size, 1);
   watch.stop();
@@ -482,7 +484,7 @@ test('windows.js on Windows: stop() while a restart is pending cancels it', () =
     setTimeout: (fn) => { timers.set(next, fn); return next++; },
     clearTimeout() {},
   });
-  const again = w2.startWindowWatch({ overlay: { getNativeWindowHandle: () => Buffer.alloc(8) }, onUpdate() {} });
+  const again = w2.startWindowWatch({ overlay: { nativeHandle: () => Buffer.alloc(8) }, onUpdate() {}, platform });
   children.at(-1).emit('close');
   again.stop();
   const count = children.length;

@@ -2,7 +2,6 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { app } = require('electron');
 
 const DEFAULTS = {
   scale: 0.6,        // sprite scale, 0.6 ≈ 250px tall
@@ -41,69 +40,74 @@ const DEFAULTS = {
   lookAsked: false,  // she told you what looking means (where the picture goes) and you said yes
 };
 
-let cache = null;
+// The config of this computer, kept in the platform's user data folder (platform/index.js).
+function createConfig({ platform }) {
+  let cache = null;
 
-function file() {
-  return path.join(app.getPath('userData'), 'config.json');
-}
-
-function load(fresh = false) {
-  if (cache && !fresh) return cache;
-  try {
-    cache = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file(), 'utf8')) };
-  } catch {
-    cache = { ...DEFAULTS };
+  function file() {
+    return path.join(platform.paths.get('userData'), 'config.json');
   }
-  return cache;
-}
 
-// Written whole to a file beside it, then moved over it: a crash or a full disk mid-write never
-// leaves half a config behind. Throws when it can't be written.
-function write(next) {
-  const target = file();
-  const temp = `${target}.tmp`;
-  try {
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    const text = JSON.stringify(next, null, 2);
-    fs.writeFileSync(temp, text);
+  function load(fresh = false) {
+    if (cache && !fresh) return cache;
     try {
-      fs.renameSync(temp, target);
-    } catch (err) {
-      // Windows: an antivirus or the search indexer holding the file open refuses the move over it
-      // (EPERM, EACCES, EBUSY). Written in place then, as it always was, rather than not at all.
-      if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) throw err;
-      fs.writeFileSync(target, text);
-      fs.rmSync(temp, { force: true });
-    }
-  } catch (err) {
-    try {
-      fs.rmSync(temp, { force: true });
+      cache = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file(), 'utf8')) };
     } catch {
-      // nothing more to clean up
+      cache = { ...DEFAULTS };
     }
-    throw err;
+    return cache;
   }
-}
 
-// Changes kept even when the file can't be written (the error is logged): what her menu and the
-// overlay have always done, so she goes on as asked until she restarts.
-function save(patch) {
-  cache = { ...load(), ...patch };
-  try {
-    write(cache);
-  } catch (err) {
-    console.error('[capri] could not save config:', err.message);
+  // Written whole to a file beside it, then moved over it: a crash or a full disk mid-write never
+  // leaves half a config behind. Throws when it can't be written.
+  function write(next) {
+    const target = file();
+    const temp = `${target}.tmp`;
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      const text = JSON.stringify(next, null, 2);
+      fs.writeFileSync(temp, text);
+      try {
+        fs.renameSync(temp, target);
+      } catch (err) {
+        // Windows: an antivirus or the search indexer holding the file open refuses the move over it
+        // (EPERM, EACCES, EBUSY). Written in place then, as it always was, rather than not at all.
+        if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) throw err;
+        fs.writeFileSync(target, text);
+        fs.rmSync(temp, { force: true });
+      }
+    } catch (err) {
+      try {
+        fs.rmSync(temp, { force: true });
+      } catch {
+        // nothing more to clean up
+      }
+      throw err;
+    }
   }
-  return cache;
+
+  // Changes kept even when the file can't be written (the error is logged): what her menu and the
+  // overlay have always done, so she goes on as asked until she restarts.
+  function save(patch) {
+    cache = { ...load(), ...patch };
+    try {
+      write(cache);
+    } catch (err) {
+      console.error('[capri] could not save config:', err.message);
+    }
+    return cache;
+  }
+
+  // Changes kept only once they are on disk: when the file can't be written this throws and nothing
+  // changes, so a settings window never shows as saved what would be lost at the next start.
+  function commit(patch) {
+    const next = { ...load(), ...patch };
+    write(next);
+    cache = next;
+    return cache;
+  }
+
+  return { load, save, commit, file, DEFAULTS };
 }
 
-// Changes kept only once they are on disk: when the file can't be written this throws and nothing
-// changes, so a settings window never shows as saved what would be lost at the next start.
-function commit(patch) {
-  const next = { ...load(), ...patch };
-  write(next);
-  cache = next;
-  return cache;
-}
-
-module.exports = { load, save, commit, file, DEFAULTS };
+module.exports = { createConfig, DEFAULTS };

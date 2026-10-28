@@ -5,6 +5,8 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { langBase, langSetting, resolveLang } = require('../src/main/lang');
 const { TRAY, LANGS } = require('../src/main/labels');
+const { createConfig } = require('../src/main/config');
+const { createFakePlatform } = require('../src/main/platform/fake');
 
 const sys = (preferred, fallback = []) => ({ preferred, fallback });
 
@@ -79,17 +81,7 @@ test('first start with a fresh profile and with an old config without lang', () 
   const os = require('node:os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-lang-'));
   try {
-    const load = () => {
-      const id = require.resolve('../src/main/config');
-      delete require.cache[id];
-      const Module = require('node:module');
-      const original = Module._load;
-      Module._load = function (request, ...rest) {
-        if (request === 'electron') return { app: { getPath: () => dir } };
-        return original.call(this, request, ...rest);
-      };
-      try { return require('../src/main/config'); } finally { Module._load = original; }
-    };
+    const load = () => createConfig({ platform: createFakePlatform({ userData: dir }) });
     let cfg = load().load(true);
     assert.equal(cfg.lang, 'auto');
     assert.equal(resolveLang(cfg.lang, sys(['pt-BR']), LANGS), 'pt');
