@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost">
+  <title>Capri overlay spike</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; user-select: none; }
+    #capri { position: absolute; left: 0; top: 0; }
+    #sprite { display: block; }
+    /* visible reference so a screenshot shows the window really is transparent and full screen */
+    #frame { position: fixed; inset: 0; border: 3px dashed rgba(122, 61, 255, .55); pointer-events: none; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="frame"></div>
+  <div id="capri"><canvas id="sprite"></canvas></div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
