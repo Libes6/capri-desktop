@@ -7,12 +7,14 @@
 const { spawnSync, spawn } = require('node:child_process');
 
 // async: the server lives in this process and must keep answering while the page loads
-const run = (bin, args) => new Promise((resolve) => {
+const run = (bin, args, limitMs = 120000) => new Promise((resolve) => {
   const p = spawn(bin, args);
   let text = '';
+  const timer = setTimeout(() => { text += '\n[timeout] killed after ' + limitMs + ' ms\n'; p.kill('SIGKILL'); }, limitMs);
+  process.on('exit', () => p.kill('SIGKILL'));
   p.stdout.on('data', (d) => (text += d));
   p.stderr.on('data', (d) => (text += d));
-  p.on('close', (status) => resolve({ status, text }));
+  p.on('close', (status) => { clearTimeout(timer); resolve({ status: status === null ? 3 : status, text }); });
 });
 const fs = require('node:fs');
 const path = require('node:path');

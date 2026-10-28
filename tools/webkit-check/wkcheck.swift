@@ -109,6 +109,8 @@ func snapshot() {
   }
 }
 
+// never hang: whatever the page does, give up (exit 3) well after the wait and the snapshot should be done
+DispatchQueue.main.asyncAfter(deadline: .now() + waitMs / 1000 + 45) { print("[timeout] page or snapshot did not finish"); finish(3) }
 view.load(URLRequest(url: URL(string: url)!))
 DispatchQueue.main.asyncAfter(deadline: .now() + waitMs / 1000) {
   if evalJS.isEmpty { snapshot(); return }

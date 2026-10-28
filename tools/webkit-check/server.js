@@ -46,7 +46,9 @@ function data() {
 
 function handler(req, res) {
   const url = new URL(req.url, 'http://x');
-  let file = decodeURIComponent(url.pathname);
+  let file;
+  try { file = decodeURIComponent(url.pathname); } catch { res.writeHead(400); return res.end(); }
+  if (file.includes('\0')) { res.writeHead(400); return res.end(); }
   if (file === '/__fake/data.js') {
     res.writeHead(200, { 'content-type': TYPES['.js'], 'cache-control': 'no-store' });
     return res.end(`window.__FAKE_DATA__ = ${JSON.stringify(data())};`);
