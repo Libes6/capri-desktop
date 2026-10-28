@@ -6,11 +6,18 @@
 
 mod assets;
 mod autostart;
+mod capture;
+mod clipboard;
+mod dialogs;
 mod menu;
 #[cfg(target_os = "macos")]
 mod mac;
+mod opener;
 mod overlay;
+mod power;
 pub mod rpc;
+mod secrets;
+mod services;
 mod settings_window;
 mod shortcuts;
 pub mod sidecar;
@@ -49,6 +56,8 @@ async fn host_invoke(window: tauri::WebviewWindow, sidecar: State<'_, Sidecar>, 
 struct Bridge {
     app: AppHandle,
     sidecar: OnceLock<Sidecar>,
+    /// the system's key store, capture, clipboard, links, dialogs, idle time (TAURI-07)
+    services: services::Services,
 }
 
 impl Bridge {
@@ -83,6 +92,7 @@ impl Bridge {
             "screens": screens["list"],
             "cursor": cursor,
             "autostart": autostart::is_enabled(app),
+            "locked": power::locked_now(),
         })
     }
 }
@@ -95,9 +105,14 @@ impl Handler for Bridge {
             "hello" => Ok(self.hello()),
             "overlay.create" => overlay::create(&self.app, rect(&params["area"])?).map(|r| json!(r)).map_err(fail),
             "overlay.setBounds" => overlay::set_bounds(&self.app, rect(&params["rect"])?).map(|r| json!(r)).map_err(fail),
+            m if services::handles(m) => self.services.handle(m, &params),
             // tray, menus, settings window, shortcuts, autostart (TAURI-06)
             _ => menu::route_request(&self.app, method, &params).map(|r| r.map_err(fail)).unwrap_or_else(|| Err(RpcError::new(-32601, format!("unknown method {method}")))),
         }
+    }
+
+    fn slow(&self, method: &str) -> bool {
+        services::slow(method)
     }
 
     fn on_notification(&self, method: &str, params: Value) {
@@ -197,12 +212,18 @@ fn debug_stdin(app: AppHandle) {
 }
 
 fn start_core(app: &AppHandle) {
-    let bridge = Arc::new(Bridge { app: app.clone(), sidecar: OnceLock::new() });
+    let tracker = Arc::new(power::Tracker::default());
+    let services = services::Services::new(Arc::new(secrets::SystemBackend), secrets::service_name(), Arc::new(dialogs::SystemPicker(app.clone())), tracker.clone());
+    let bridge = Arc::new(Bridge { app: app.clone(), sidecar: OnceLock::new(), services });
     let sidecar = Sidecar::start(sidecar_command, bridge.clone(), RestartPolicy::new(5, Duration::from_secs(60), Duration::from_millis(200)));
     bridge.sidecar.set(sidecar.clone()).ok();
     app.manage(sidecar);
     let pusher = bridge.clone();
     overlay::start_poll(app.clone(), move |method, params| pusher.push(method, params));
+    // sleep, wake, lock, user switch: to the core as `power` { event } (on the main thread, which is where this runs)
+    let pusher = bridge.clone();
+    let sink: power::Sink = Arc::new(move |event| pusher.push("power", json!({ "event": event.name() })));
+    app.manage(power::start(tracker, sink));
 }
 
 pub fn run() {
@@ -219,6 +240,7 @@ pub fn run() {
             Some(dir) => assets::serve_user_sounds(dir, &request),
             None => tauri::http::Response::builder().status(503).body(Vec::new()).unwrap(),
         })
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![host_invoke])
         .setup(|app| {
             // no Dock icon, no menu bar; before any window is made (see overlay.rs)

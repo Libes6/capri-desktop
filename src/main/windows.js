@@ -14,7 +14,10 @@ const readline = require('node:readline');
 const { spawn } = require('node:child_process');
 
 // in the installed app it sits next to the app archive (asarUnpack), where PowerShell can read it
-const SCRIPT = path.join(__dirname, 'windows.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+// (the Tauri build: <resources>/windows.ps1, CAPRI_RESOURCES from sidecar/main.js)
+const SCRIPT = process.env.CAPRI_RESOURCES
+  ? path.join(process.env.CAPRI_RESOURCES, 'windows.ps1')
+  : path.join(__dirname, 'windows.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
 
 // The snapshots of a watcher, as seen from her window, to onUpdate. `toDip(win)`: the watcher's
 // physical-pixel rect -> Electron's screen DIPs ({ x, y, width, height }).

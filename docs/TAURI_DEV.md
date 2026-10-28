@@ -31,7 +31,8 @@ On macOS she has no Dock icon (Accessory policy); the overlay window is level 10
 
 ## Windows and Linux
 
-Written but never run: the Rust and Node code is portable (`cfg(target_os)` only for the macOS window flags and the pointer read), the sidecar build has the platform branches. CI is TAURI-12. Known gaps there: mixed-DPI coordinates (the cursor and monitor positions are divided by one scale), `capri://usersounds/` is `http://capri.localhost/` on Windows (the core's URLs need a platform-made base).
+Written but never run: the Rust and Node code is portable (`cfg(target_os)` only for the macOS window flags and the pointer read), the sidecar build has the platform branches. CI is TAURI-12. Known gaps there: mixed-DPI coordinates (the cursor and monitor positions are divided by one scale), `capri://usersounds/` is `http://capri.localhost/` on Windows (`platform.app.userSoundUrl` makes the address; her pages' CSP allows it; never run). The native services of TAURI-07 (key store, capture, clipboard, links, power) are in `docs/TAURI_NATIVE.md`, with what was and was not run on each system.
+
 
 ## Tray, menus, settings window, shortcuts, autostart (TAURI-06)
 

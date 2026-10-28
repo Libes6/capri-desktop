@@ -68,6 +68,7 @@ test('the bundled sidecar starts, answers a command through the dispatcher and e
         buffer = buffer.slice(at + 1);
         if (m.method === 'hello') send({ id: m.id, result: { name: 'Capri', version: '0', paths: { userData: dir, home: dir, appPath: ROOT, resources: ROOT, temp: dir, exe: dir }, screens: [display], cursor: { x: 0, y: 0 } } });
         else if (m.method === 'overlay.create') send({ id: m.id, result: m.params.area });
+        else if (m.method === 'secrets.masterKey' || m.method === 'app.appForProtocol') send({ id: m.id, result: null }); // no key store here
         else if (m.method === 'ready') send({ id: 50, method: 'invoke', params: { scope: 'overlay', name: 'getConfig', args: [], sender: { label: 'overlay' } } });
         else if (m.id === 50) { clearTimeout(timer); resolve(m); }
       }

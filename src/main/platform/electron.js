@@ -132,6 +132,7 @@ function createElectronPlatform({ electron = require('electron'), root, dev = fa
       },
       // whether something is registered to open that kind of link (roblox://…)
       appForProtocol: (url) => Boolean(app.getApplicationNameForProtocol(url)),
+      userSoundUrl: (file) => `capri://usersounds/${encodeURIComponent(file)}`,
       // how her window is drawn, set before Electron starts: 'auto', 'gl' or 'software'
       setRenderMode: (render) => {
         if (render === 'gl') app.commandLine.appendSwitch('use-angle', 'gl');
