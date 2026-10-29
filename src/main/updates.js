@@ -447,7 +447,8 @@ function startTauriUpdates({ platform, smoke, onChange, log }) {
   const current = platform.app.version();
   // the Electron build this one replaced (TAURI-13, mac-update.js) left its bundle beside this one as a hidden backup:
   // it is removed now that the Tauri build has started. (Had it not started, the backup would still be there to put back.)
-  if (process.platform === 'darwin' && platform.app.isPackaged()) {
+  // (not gated on isPackaged(): the shell reports false until it is provisioned; cleanup() acts only inside a real .app bundle)
+  if (process.platform === 'darwin') {
     try { require('./mac-update').cleanup({ exePath: platform.paths.get('exe'), tmpDir: platform.paths.get('temp') }); } catch { /* not ours to insist on */ }
   }
   const { tauri: api } = platform.updater.get();
