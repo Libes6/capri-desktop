@@ -1,0 +1,263 @@
+name: Tauri builds and release draft
+
+# TAURI-12, docs/TAURI_RELEASE.md. The Electron pipeline (build.yml) is untouched and keeps making the Electron files of the
+# same release; this one makes the Tauri files (installers, update packages with .sig, latest.json, SHA256SUMS).
+#
+# Triggers and what each does:
+#   pull_request -> main, feat/tauri   checks + builds all platforms, NO updates (no secrets), no draft
+#   push feat/tauri                    the same, with the update key if the repository has it; no draft (the commit is not main's)
+#   push main                          builds, then creates / updates the DRAFT release fork-v<version>, next to the Electron
+#                                      draft job (same commit, same concurrency group). Skipped if that version is already public.
+#   workflow_dispatch                  builds; with `draft` also the DRAFT (from the branch you run it on)
+# Nothing here publishes a release. A published release is never touched (the plan job stops / skips).
+on:
+  push:
+    branches: [main, feat/tauri]
+  pull_request:
+    branches: [main, feat/tauri]
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Also create or update the DRAFT release fork-v<version> (needs the updater key and secrets)'
+        type: boolean
+        default: false
+      notes:
+        description: 'Release notes for latest.json (the app shows them as plain text); empty: "Capri v<version>"'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# One run per ref; a running release build is never cancelled by a newer push (pull requests are).
+concurrency:
+  group: tauri-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  plan:
+    name: Plan
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # write: `gh api releases` lists DRAFTS only for a token that can write. This job only reads.
+    permissions:
+      contents: write
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      skip: ${{ steps.plan.outputs.skip }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Versions agree (package.json, Cargo.toml, tauri.conf.json)
+        run: node scripts/release-tauri.js versions
+      - id: state
+        run: node scripts/release-tauri.js plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DRAFT: ${{ inputs.draft }}
+          STATE: ${{ steps.state.outputs.state }}
+          VERSION: ${{ steps.state.outputs.version }}
+        run: |
+          release=false
+          if [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then release=true; fi
+          if [ "$EVENT" = workflow_dispatch ] && [ "$DRAFT" = true ]; then release=true; fi
+          skip=false
+          if [ "$STATE" = published ]; then
+            if [ "$release" = true ] && [ "$EVENT" = push ]; then
+              echo "::notice::fork-v$VERSION is already published: nothing to build for it (bump the version for a new release)"
+              skip=true
+            elif [ "$release" = true ]; then
+              echo "::error::fork-v$VERSION is already published; bump package.json, Cargo.toml and tauri.conf.json"
+              exit 1
+            fi
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: plan
+    # plan is skipped for pull requests; a failed plan stops everything
+    if: ${{ !cancelled() && needs.plan.result != 'failure' && needs.plan.outputs.skip != 'true' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-aarch64
+            runner: macos-15
+          - platform: darwin-x86_64
+            runner: macos-15-intel
+          - platform: windows-x86_64
+            runner: windows-latest
+          - platform: linux-x86_64
+            runner: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Linux AppImage tooling: no FUSE on the runner, and `strip` of the old linuxdeploy chokes on new binaries
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+      NO_STRIP: 'true'
+      # public key: a repository VARIABLE. Empty (a pull request, a fork, not configured): the build has updates OFF.
+      CAPRI_UPDATER_PUBLIC_KEY: ${{ vars.CAPRI_UPDATER_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            crates/capri-hook
+          cache-on-failure: true
+      - name: Linux packages (WebKitGTK 4.1, tray, keyring, X11 tools for the runtime check)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf build-essential pkg-config \
+            libssl-dev libdbus-1-dev libxdo-dev libxcb1-dev libxrandr-dev libx11-dev \
+            file xz-utils libfuse2t64 \
+            xvfb openbox picom x11-utils dbus-x11 libgl1-mesa-dri libglx-mesa0
+      # `--ignore-scripts`: Electron's binary (a postinstall download) is not needed to test or package the Tauri build
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Source checks
+        run: |
+          node scripts/release-tauri.js versions
+          npm test
+      - name: Native tests (shell and capri-hook)
+        run: |
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
+          cargo test --locked --manifest-path crates/capri-hook/Cargo.toml
+      # the CLI is pinned (the `tauri` crate is ~2.12 in Cargo.toml); bump both on purpose. Cached: building it takes minutes.
+      - uses: actions/cache@v4
+        id: cli
+        with:
+          path: ${{ runner.temp }}/tauri-cli
+          key: tauri-cli-2.12.4-${{ runner.os }}-${{ runner.arch }}
+      - name: Tauri CLI
+        if: steps.cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --locked --version '=2.12.4' --root "$RUNNER_TEMP/tauri-cli"
+      - name: Updater key present?
+        env:
+          SECRET: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          RELEASE: ${{ needs.plan.outputs.release }}
+        run: |
+          if [ -z "$CAPRI_UPDATER_PUBLIC_KEY" ] || [ -z "$SECRET" ]; then
+            if [ "$RELEASE" = true ]; then
+              echo "::error::a release build needs the repository variable CAPRI_UPDATER_PUBLIC_KEY and the secrets TAURI_SIGNING_PRIVATE_KEY[_PASSWORD] (docs/TAURI_RELEASE.md)"
+              exit 1
+            fi
+            echo "::warning::updater key or signing secret missing: this build has in-app updates OFF and no .sig files (fine for a pull request or a trial run, never for a release)"
+            echo "REQUIRE_UPDATES=" >> "$GITHUB_ENV"
+            echo "CAPRI_UPDATER_PUBLIC_KEY=" >> "$GITHUB_ENV"
+          else
+            echo "REQUIRE_UPDATES=--require-updates" >> "$GITHUB_ENV"
+          fi
+      - name: Package (sidecar, capri-hook, window helper, cargo tauri build, verify)
+        env:
+          CAPRI_TAURI_CLI: ${{ runner.temp }}/tauri-cli/bin/cargo-tauri
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/package-tauri.js --collect collected $REQUIRE_UPDATES
+      # --- the packaged app starts: the core (the sidecar) is up, the bridge answers, (macOS) the window helper works
+      - name: Run the package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          app=src-tauri/target/release/bundle/macos/Capri.app
+          test -x "$app/Contents/Resources/bin/capri-hook" && test -x "$app/Contents/Resources/bin/capri-windows"
+          node scripts/package-smoke.js "$app/Contents/MacOS/capri" --expect-window-tracking
+      # Windows: the NSIS installer is really run, silently, into a temporary folder (HKCU only), and that copy is started
+      - name: Install and run the package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem collected/windows-x86_64/*-setup.exe).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'capri-installed'
+          Start-Process -FilePath $setup -ArgumentList '/S', "/D=$dir" -Wait
+          Get-ChildItem $dir -Recurse | Select-Object -ExpandProperty FullName
+          foreach ($f in 'capri.exe', 'capri-sidecar.exe', 'bin/capri-hook.exe', 'windows.ps1') {
+            if (-not (Test-Path (Join-Path $dir $f))) { Write-Error "installed copy lacks $f"; exit 1 }
+          }
+          node scripts/package-smoke.js (Join-Path $dir 'capri.exe')
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      # Linux: the .deb is unpacked (not installed) and its usr/bin/capri started: resources are then where an install puts them
+      - name: Unpack and run the package (Linux, Xvfb + openbox)
+        if: runner.os == 'Linux'
+        run: |
+          deb=$(ls collected/linux-x86_64/*.deb)
+          dpkg-deb -x "$deb" "$RUNNER_TEMP/capri-deb"
+          test -x "$RUNNER_TEMP/capri-deb/usr/bin/capri-sidecar"
+          dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" bash -c '
+            openbox > /tmp/capri-openbox.log 2>&1 &
+            picom > /tmp/capri-picom.log 2>&1 &
+            sleep 1
+            node scripts/package-smoke.js "$RUNNER_TEMP/capri-deb/usr/bin/capri"
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: collected/${{ matrix.platform }}/*
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    name: Create or update the draft release
+    needs: [plan, build]
+    if: ${{ needs.plan.outputs.release == 'true' && needs.plan.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    # the Electron draft job (build.yml) writes the same draft: one at a time, neither cancels the other
+    concurrency:
+      group: capri-fork-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tauri-*
+          path: artifacts
+      # download-artifact puts each artifact in artifacts/tauri-<platform>/; the scripts want artifacts/<platform>/
+      - name: Arrange and assemble
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          for d in artifacts/tauri-*; do mv "$d" "artifacts/${d#artifacts/tauri-}"; done
+          ls -R artifacts
+          if [ -n "$NOTES" ]; then printf '%s\n' "$NOTES" > notes.txt; node scripts/release-tauri.js assemble artifacts release-assets --notes notes.txt
+          else node scripts/release-tauri.js assemble artifacts release-assets; fi
+          ls -l release-assets
+          cat release-assets/latest.json
+      - name: Verify the signatures against the public key
+        env:
+          CAPRI_UPDATER_PUBLIC_KEY: ${{ vars.CAPRI_UPDATER_PUBLIC_KEY }}
+        run: |
+          node scripts/verify-signatures.js release-assets
+      - name: Draft (never published here)
+        run: node scripts/release-tauri.js draft release-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: echo "Draft is ready. Check the files (docs/TAURI_RELEASE.md), then publish by hand." >> "$GITHUB_STEP_SUMMARY"

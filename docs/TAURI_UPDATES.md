@@ -99,7 +99,7 @@ odd signature, two packages for a platform, an empty package, a version that is 
 (`darwin-x86_64`) is optional. No key is read; the URLs name the release's own tag (`fork-vX.Y.Z`), never `/latest/`.
 The Tauri names are chosen not to collide with the Electron ones in the same release (`Capri-0.3.0-win-x64.exe`,
 `-mac-arm64.zip`, `-linux-x86_64.AppImage`, `-linux-amd64.deb`): capital OS names, other suffixes (a test pins it).
-The installers for people (dmg, deb, NSIS) are not in the feed; the CI (TAURI-12) adds them to the draft.
+The installers for people (dmg, deb, NSIS) are not in the feed; the CI (TAURI-12, [TAURI_RELEASE.md](TAURI_RELEASE.md)) adds them to the draft.
 
 ## Tags and releases: not mixing Electron and Tauri
 

@@ -108,6 +108,10 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+    # the Tauri pipeline (tauri-release.yml) fills the same draft: one writer at a time, neither cancels the other
+    concurrency:
+      group: capri-fork-release
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -65,13 +65,21 @@ function checkUpdateFeeds(dir, version, installers) {
   }
 }
 
+// The Tauri pipeline (scripts/release-tauri.js) keeps its notes between these markers in the SAME draft: keep them.
+const TAURI_BEGIN = '<!-- capri-tauri:begin -->';
+const TAURI_END = '<!-- capri-tauri:end -->';
+function keepTauriNotes(existing, body) {
+  const text = String(existing?.body ?? '');
+  const from = text.indexOf(TAURI_BEGIN);
+  const to = text.indexOf(TAURI_END);
+  return from >= 0 && to > from ? `${body}\n\n${text.slice(from, to + TAURI_END.length)}` : body;
+}
+
 function draftPayload(existing, version, sha) {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Use a stable x.y.z package version');
   if (existing && !existing.draft) throw new Error(`fork-v${version} is already published; bump package.json and package-lock.json`);
-  return {
-    tag_name: `fork-v${version}`, target_commitish: sha, name: `Capri v${version}`, draft: true,
-    body: `Cross-platform build from ${sha}.\n\nWindows x64: EXE\nLinux x64 (X11/XWayland): AppImage and DEB\nmacOS Apple Silicon: DMG and ZIP\n\nUnsigned builds: Windows signing and Apple Developer ID/notarization are not configured.\nWindow tracking and desktop automation remain Windows-only in v0.1.\n\nIn-app updates read latest.yml, latest-linux.yml and latest-mac.yml (sha512 of each installer) from the latest published release: publishing this draft offers it to installed copies. These notes are shown in the app as plain text.\n\nVerify SHA256SUMS.txt and test installers before publishing.`,
-  };
+  const body = `Cross-platform build from ${sha}.\n\nWindows x64: EXE\nLinux x64 (X11/XWayland): AppImage and DEB\nmacOS Apple Silicon: DMG and ZIP\n\nUnsigned builds: Windows signing and Apple Developer ID/notarization are not configured.\nWindow tracking and desktop automation remain Windows-only in v0.1.\n\nIn-app updates read latest.yml, latest-linux.yml and latest-mac.yml (sha512 of each installer) from the latest published release: publishing this draft offers it to installed copies. These notes are shown in the app as plain text.\n\nVerify SHA256SUMS.txt and test installers before publishing.`;
+  return { tag_name: `fork-v${version}`, target_commitish: sha, name: `Capri v${version}`, draft: true, body: keepTauriNotes(existing, body) };
 }
 
 function main() {
