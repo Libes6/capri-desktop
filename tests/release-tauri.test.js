@@ -273,6 +273,12 @@ test('the Electron package takes nothing of the Tauri build: no shell, sidecar, 
     if (!/tauri|sidecar|stage-frontend|release-manifest|updater-config|verify-signatures|draft-release|bridge-feed/.test(file)) continue;
     assert.ok(excluded.includes(`scripts/${file}`), `scripts/${file} must not be in the Electron package`);
   }
+  // whitelist: of the scripts folder only the hooks installers, the demo and check-llm belong to the app; every other script
+  // (release, CI, probes, packaging) must be excluded, whenever it was added
+  for (const file of fs.readdirSync(path.join(ROOT, 'scripts'))) {
+    if (/^(install-.*hooks.*|demo.*|check-llm)\.js$/.test(file)) continue;
+    assert.ok(excluded.includes(`scripts/${file}`), `scripts/${file} would end up in the Electron package`);
+  }
   // and what the shipped code needs is not cut: the core requires these three, the hooks the rest of src/hooks/assets
   for (const needed of ['scripts/demo-sequence.js', 'scripts/install-hooks.js', 'scripts/install-codex-hooks.js', 'scripts/install-hooks-agy.js']) {
     assert.ok(!excluded.includes(needed), needed);
