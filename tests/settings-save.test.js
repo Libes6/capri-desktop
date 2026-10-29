@@ -287,3 +287,14 @@ test('initiative: saved through commit and read back from a fresh profile', () =
   config.commit(toConfig(checkPatch({ initiative: 'active' }, ctx()).values, config.load()).patch);
   assert.equal(config.load(true).initiative, 'active');
 });
+
+test('display mode: offered when the platform reads it, left out of the settings window when it picks its own renderer (Tauri)', () => {
+  const facts = (extra) => ({
+    cfg: { ...config.DEFAULTS }, lang: 'en', langSetting: 'auto', autoLang: 'en', features: {}, about: {}, renderNow: 'auto',
+    screen: { index: 0, count: 1, width: 1512, height: 982 }, screens: [{ id: 7, width: 1512, height: 982 }], ...extra,
+  });
+  const ids = (view) => view.sections.flatMap((s) => s.rows).map((r) => r.id);
+  assert.ok(ids(settingsView(facts())).includes('render'));
+  assert.ok(ids(settingsView(facts({ renderModes: true }))).includes('render'));
+  assert.ok(!ids(settingsView(facts({ renderModes: false }))).includes('render'));
+});

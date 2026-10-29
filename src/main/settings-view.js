@@ -208,7 +208,11 @@ function settingsView(facts) {
     openMenu: s.openMenu,
     text,
     // the note on what's still only in her menu, with a button to open it: at the top of General
-    sections: SECTIONS.map((id) => ({ id, title: s[id], fromMenu: id === 'general', rows: rows[id] })),
+    sections: SECTIONS.map((id) => ({
+      id, title: s[id], fromMenu: id === 'general',
+      // facts.renderModes === false: the platform picks its own renderer (the Tauri build), no display mode to offer
+      rows: facts.renderModes === false ? rows[id].filter((r) => r.id !== 'render') : rows[id],
+    })),
   };
 }
 

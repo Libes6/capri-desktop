@@ -53,7 +53,32 @@ pub fn create(app: &AppHandle) -> Result<(), String> {
         builder = builder.menu(m);
     }
     st.tray = Some(builder.build(app).map_err(|e| e.to_string())?);
+    // the system places the icon a moment after it is made
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        push_bounds(&handle);
+    });
     Ok(())
+}
+
+/// The icon's place for the core (her guide points at it). The events above carry it, but only once the pointer
+/// touches the icon; `push_bounds` asks the tray itself, so it is known before that (Electron's `tray.getBounds()`).
+fn tell_rect(app: &AppHandle, r: &tauri::Rect) {
+    let scale = app.primary_monitor().ok().flatten().map(|m| m.scale_factor()).unwrap_or(1.0);
+    let (p, s) = (r.position.to_logical::<f64>(scale), r.size.to_logical::<f64>(scale));
+    menu::tell(app, "tray.bounds", json!({ "x": p.x.round(), "y": p.y.round(), "width": s.width.round(), "height": s.height.round() }));
+}
+
+fn push_bounds(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let st = state(&handle);
+        let rect = st.0.lock().ok().and_then(|st| st.tray.as_ref().and_then(|t| t.rect().ok().flatten()));
+        if let Some(r) = rect {
+            tell_rect(&handle, &r);
+        }
+    });
 }
 
 fn on_icon_event(app: &AppHandle, event: &TrayIconEvent) {
@@ -62,9 +87,7 @@ fn on_icon_event(app: &AppHandle, event: &TrayIconEvent) {
         _ => None,
     };
     if let Some(r) = rect {
-        let scale = app.primary_monitor().ok().flatten().map(|m| m.scale_factor()).unwrap_or(1.0);
-        let (p, s) = (r.position.to_logical::<f64>(scale), r.size.to_logical::<f64>(scale));
-        menu::tell(app, "tray.bounds", json!({ "x": p.x.round(), "y": p.y.round(), "width": s.width.round(), "height": s.height.round() }));
+        tell_rect(app, r);
     }
     // a left click on Windows and Linux (the menu is the right click's there)
     if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
@@ -86,6 +109,8 @@ pub fn set_menu(app: &AppHandle, params: &Value) -> Result<(), String> {
     }
     st.menu = Some(menu);
     st.previous = std::mem::replace(&mut st.handles, handles);
+    drop(st);
+    push_bounds(app); // the menu bar's icons move when others come and go
     Ok(())
 }
 

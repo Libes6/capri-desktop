@@ -8,6 +8,7 @@ mod assets;
 mod autostart;
 mod capture;
 mod clipboard;
+mod demo;
 mod dialogs;
 mod menu;
 #[cfg(target_os = "macos")]

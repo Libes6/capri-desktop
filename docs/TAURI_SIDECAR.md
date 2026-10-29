@@ -30,7 +30,8 @@ The sidecar platform (`src/main/platform/sidecar.js`) answers what the system ca
 |---|---|---|
 | `tray.create`, `app.installAppMenu`, `windows.createSettings` (a closed controller), `autostart.*`, `shortcuts.*` | unsupported | TAURI-06 |
 | `secrets.*`, `capture.screen`, `clipboard.writeImage`, `shell.*`, `power.*`, `dialogs.pickFolder`, `app.appForProtocol`, `app.userSoundUrl` | **done in TAURI-07**, see `docs/TAURI_NATIVE.md` (no key store: isAvailable is false and **keys are then stored as plain text in config.json**, as Electron does when its encryption is unavailable) | TAURI-07 |
-| `overlay.capture`/`nativeHandle`/`mediaSourceId` (macOS window watcher, the report card's picture), `windows.createDemoTerminal` | unsupported | TAURI-05 |
+| `overlay.capture` (the report card's copy button), `overlay.nativeHandle` (Windows and X11 watchers' own window), `overlay.mediaSourceId` | unsupported, see the open questions of [TAURI_PARITY.md](TAURI_PARITY.md) | TAURI-11 (open) |
+| `windows.createDemoTerminal` | **done in TAURI-11** (`demo.rs`: a window from the HTML the core sends) | TAURI-11 |
 | `updater` | tauri-plugin-updater through Rust (`updater.rs`) | TAURI-10 done, see [TAURI_UPDATES.md](TAURI_UPDATES.md) |
 | Hover, chat focus, several screens, mixed DPI on Windows | minimal | TAURI-05 |
 

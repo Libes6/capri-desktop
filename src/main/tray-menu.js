@@ -188,19 +188,22 @@ function trayMenuTemplate({
         label, type: 'radio', checked: cfg.motion === motion, click: () => updateConfig({ motion, motionAsked: true }),
       })),
     },
-    {
-      label: t.display,
-      // only read when she starts: she restarts in the mode picked
-      submenu: [['auto', t.displayAuto], ['gl', t.displayGl], ['software', t.displaySoftware]].map(([render, label]) => ({
-        label, type: 'radio', checked: cfg.render === render,
-        click: () => {
-          if (cfg.render === render) return;
-          config.save({ render });
-          platform.app.relaunch();
-          platform.app.exit(0);
-        },
-      })),
-    },
+    // WebKit and WebView2 pick their own renderer: the Tauri build has no display mode to offer (platform.app.renderModes)
+    ...(platform.app.renderModes === false ? [] : [
+      {
+        label: t.display,
+        // only read when she starts: she restarts in the mode picked
+        submenu: [['auto', t.displayAuto], ['gl', t.displayGl], ['software', t.displaySoftware]].map(([render, label]) => ({
+          label, type: 'radio', checked: cfg.render === render,
+          click: () => {
+            if (cfg.render === render) return;
+            config.save({ render });
+            platform.app.relaunch();
+            platform.app.exit(0);
+          },
+        })),
+      },
+    ]),
     {
       label: t.lang,
       // Auto names the language it gives right now: "Automatic: English"
