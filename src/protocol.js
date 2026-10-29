@@ -1,8 +1,8 @@
 'use strict';
 
 // The protocol between her pages and the core (TAURI-02): every command the pages send and every event
-// the core sends back, in one place. Plain JS, no requires: the dispatcher (main/dispatch.js), the tests, `npm run protocol:export` (docs/protocol.json, read by the
-// Tauri side) and docs/PROTOCOL.md all come from this file.
+// the core sends back, in one place. Plain JS, no requires: the dispatcher (main/dispatch.js), the tests,
+// `npm run protocol:export` (docs/protocol.json, read by the Tauri side) and docs/PROTOCOL.md all come from this file.
 //
 // A command:
 //   name     the command as the page calls it: the method of host.js (host.invoke(name, args))
