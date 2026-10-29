@@ -312,6 +312,6 @@ test('the workflow is wired to the same scripts, never publishes, and pins its a
   // cargo test compiles generate_context!, which embeds the generated src-tauri/frontend: staged first
   assert.ok(text.indexOf('scripts/stage-frontend.js') > 0 && text.indexOf('scripts/stage-frontend.js') < text.indexOf('cargo test --locked'));
   // a pull request's code never sees the signing key
-  assert.equal((text.match(/github\.event_name != 'pull_request' && secrets\.TAURI_SIGNING_PRIVATE_KEY/g) || []).length, 2);
+  assert.equal((text.match(/github\.event_name != 'pull_request' && secrets\.TAURI_SIGNING_PRIVATE_KEY\b/g) || []).length, 2);
   for (const triple of ['macos-15', 'macos-15-intel', 'windows-latest', 'ubuntu-24.04']) assert.ok(text.includes(triple), triple);
 });
