@@ -89,7 +89,9 @@
       "!scripts/updater-config.js",
       "!scripts/perf-probe-tauri.js",
       "!scripts/updater-smoke-tauri.js",
-      "!scripts/smoke-test-tauri.js"
+      "!scripts/smoke-test-tauri.js",
+      "!scripts/draft-release.js",
+      "!scripts/bridge-feed.js"
     ],
     "asarUnpack": [
       "hooks/**",

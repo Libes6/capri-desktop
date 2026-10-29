@@ -70,6 +70,17 @@ test('collect copies the installers, the update package and its .sig into <platf
   assert.ok(fs.existsSync(path.join(dest, 'darwin-aarch64', 'Capri.app.tar.gz.sig')));
 });
 
+test('collect of a build with updates OFF (a pull request) keeps the installers even though Windows and Linux have no .sig', (t) => {
+  for (const [platform, sub, file] of [['linux-x86_64', 'appimage', 'Capri_0.1.0_amd64.AppImage'], ['windows-x86_64', 'nsis', 'Capri_0.1.0_x64-setup.exe']]) {
+    const bundle = tmp(t);
+    const dest = tmp(t);
+    fs.mkdirSync(path.join(bundle, sub));
+    fs.writeFileSync(path.join(bundle, sub, file), 'package');
+    assert.throws(() => pack.collect(platform, dest, bundle, { bridge: false }), /\.sig/);
+    assert.deepEqual(pack.collect(platform, dest, bundle, { bridge: false, requireSig: false }), [file]);
+  }
+});
+
 // --- a real minisign signature, made here with a throw-away key (the format Tauri's signer writes)
 function minisignKey() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
@@ -254,7 +265,7 @@ test('the Electron package takes nothing of the Tauri build: no shell, sidecar, 
   assert.ok(included.includes('scripts/**'));
   const excluded = build.files.filter((p) => p.startsWith('!')).map((p) => p.slice(1));
   for (const file of fs.readdirSync(path.join(ROOT, 'scripts'))) {
-    if (!/tauri|sidecar|stage-frontend|release-manifest|updater-config|verify-signatures/.test(file)) continue;
+    if (!/tauri|sidecar|stage-frontend|release-manifest|updater-config|verify-signatures|draft-release|bridge-feed/.test(file)) continue;
     assert.ok(excluded.includes(`scripts/${file}`), `scripts/${file} must not be in the Electron package`);
   }
   // and what the shipped code needs is not cut: the core requires these three, the hooks the rest of src/hooks/assets
@@ -298,5 +309,9 @@ test('the workflow is wired to the same scripts, never publishes, and pins its a
   // both draft jobs (Electron's and this one) share a concurrency group, so they cannot create two drafts at once
   assert.match(text, /group: capri-fork-release/);
   assert.match(read('.github', 'workflows', 'build.yml'), /group: capri-fork-release/);
+  // cargo test compiles generate_context!, which embeds the generated src-tauri/frontend: staged first
+  assert.ok(text.indexOf('scripts/stage-frontend.js') > 0 && text.indexOf('scripts/stage-frontend.js') < text.indexOf('cargo test'));
+  // a pull request's code never sees the signing key
+  assert.equal((text.match(/github\.event_name != 'pull_request' && secrets\.TAURI_SIGNING_PRIVATE_KEY/g) || []).length, 2);
   for (const triple of ['macos-15', 'macos-15-intel', 'windows-latest', 'ubuntu-24.04']) assert.ok(text.includes(triple), triple);
 });

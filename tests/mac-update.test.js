@@ -130,7 +130,7 @@ test('a bundle that cannot be replaced is said before anything is downloaded', a
   assert.equal(locationProblem('/Volumes/Capri 0.1.0/Capri.app'), 'disk image or external volume');
   assert.equal(locationProblem(null), 'not an app bundle');
   assert.equal(bundleOf('/usr/local/bin/capri'), null);
-  if (process.getuid?.() === 0) return; // root writes anywhere
+  if (process.getuid?.() === 0 || process.platform === 'win32') return; // root writes anywhere; a Windows folder has no 0o555
   const s = setup(t);
   fs.chmodSync(s.parent, 0o555);
   const installer = s.make();
