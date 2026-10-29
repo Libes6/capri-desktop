@@ -66,8 +66,8 @@ Jobs: **plan** (ubuntu; `contents: write` only because drafts are invisible to a
 
 The build job: Node 22 (npm cache), stable Rust with `Swatinem/rust-cache`, Linux packages (`libwebkit2gtk-4.1-dev`, GTK,
 `libayatana-appindicator3-dev`, `librsvg2-dev`, `patchelf`, `libssl-dev`, `libdbus-1-dev` for the key store, `libxdo-dev`,
-Xvfb/openbox/picom/`x11-utils` for the run check), `npm ci --ignore-scripts`, `npm test`, `cargo test` of the shell and of
-`capri-hook`, the Tauri CLI (pinned, cached), then `package-tauri.js --collect` with the secrets given to that step only, then
+Xvfb/openbox/picom/`x11-utils` for the run check), `npm ci --ignore-scripts`, `npm test`, `cargo test` of the shell (after `stage-frontend.js`: the shell embeds `src-tauri/frontend` at compile time, so a clean checkout does not compile without it) and of
+`capri-hook`, the Tauri CLI (pinned, cached right after it is built), then `package-tauri.js --collect` with the secrets given to that step only (never on a pull request: it gets none, even from this repository), then
 the run check of the **package**: macOS the `.app` itself (+ helper and `capri-hook` present, window tracking on); Windows the
 NSIS installer is run silently into a temp folder and the installed `capri.exe` started; Linux the `.deb` unpacked and its
 `usr/bin/capri` started under Xvfb. Artifacts `tauri-<platform>`, 14 days.

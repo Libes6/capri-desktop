@@ -195,13 +195,15 @@ function bridgeZip(app, out, { exec = execFileSync } = {}) {
 }
 
 /** Copies what a release needs into <dest>/<platform>/. */
-function collect(platform, dest, dir = bundleDir(), { bridge = bridgeEnabled() } = {}) {
+function collect(platform, dest, dir = bundleDir(), { bridge = bridgeEnabled(), requireSig = true } = {}) {
   const files = findOutputs(platform, dir);
   const out = path.join(dest, platform);
   fs.mkdirSync(out, { recursive: true });
   const copied = [];
   for (const file of [files.dmg, files.deb, files.updater, files.updater && `${files.updater}.sig`]) {
     if (!file) continue;
+    // a build with updates OFF (a pull request, no key) has no .sig: the installers are still collected (CI installs and starts them)
+    if (!requireSig && file.endsWith('.sig') && !fs.existsSync(file)) continue;
     if (!fs.existsSync(file)) throw new Error(`missing: ${file}${file.endsWith('.sig') ? ' (was TAURI_SIGNING_PRIVATE_KEY set?)' : ''}`);
     fs.copyFileSync(file, path.join(out, path.basename(file)));
     copied.push(path.basename(file));
@@ -244,6 +246,8 @@ function main(argv = process.argv.slice(2)) {
   const publicKey = (process.env.CAPRI_UPDATER_PUBLIC_KEY || '').trim();
   const updates = !argv.includes('--no-updates') && publicKey !== '';
   if (argv.includes('--require-updates') && !updates) throw new Error('--require-updates: CAPRI_UPDATER_PUBLIC_KEY is not set (a release build must have updates on)');
+  // a binary compiled with CAPRI_LOCAL_UPDATER_TEST=1 accepts a plain-http loopback feed: only scripts/updater-smoke-tauri.js builds one
+  if (argv.includes('--require-updates') && process.env.CAPRI_LOCAL_UPDATER_TEST === '1') throw new Error('--require-updates: CAPRI_LOCAL_UPDATER_TEST is set (a test-only build must never be a release)');
   if (updates && !process.env.TAURI_SIGNING_PRIVATE_KEY) {
     throw new Error('CAPRI_UPDATER_PUBLIC_KEY is set but TAURI_SIGNING_PRIVATE_KEY is not: the update packages could not be signed');
   }
@@ -288,7 +292,7 @@ function main(argv = process.argv.slice(2)) {
   log('[verify]');
   verify(platform);
   const dest = arg('--collect');
-  if (dest) log(`collected into ${path.join(path.resolve(dest), platform)}: ${collect(platform, path.resolve(dest)).join(', ')}`);
+  if (dest) log(`collected into ${path.join(path.resolve(dest), platform)}: ${collect(platform, path.resolve(dest), bundleDir(), { requireSig: updates }).join(', ')}`);
   log(`done in ${((Date.now() - t0) / 1000).toFixed(0)} s, updates ${updates ? 'ON' : 'OFF'}`);
 }
 

@@ -26,7 +26,8 @@ function cargo(args) {
 const targetDir = () => process.env.CARGO_TARGET_DIR || path.join(TAURI, 'target');
 
 function main(command) {
-  if (command === 'test') return cargo(['test']);
+  // the shell embeds src-tauri/frontend (generated, not in git) at compile time: stage it, or a clean checkout does not compile
+  if (command === 'test') { stage(); return cargo(['test']); }
   if (command !== 'dev' && command !== 'build') {
     console.error('usage: node scripts/tauri.js dev|build|test');
     process.exit(2);

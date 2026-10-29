@@ -11,6 +11,9 @@ on:
       - 'spike/**'
       - '.github/workflows/tauri-spike.yml'
 
+permissions:
+  contents: read
+
 jobs:
   windows:
     runs-on: windows-latest

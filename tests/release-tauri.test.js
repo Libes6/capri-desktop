@@ -70,6 +70,17 @@ test('collect copies the installers, the update package and its .sig into <platf
   assert.ok(fs.existsSync(path.join(dest, 'darwin-aarch64', 'Capri.app.tar.gz.sig')));
 });
 
+test('collect of a build with updates OFF (a pull request) keeps the installers even though Windows and Linux have no .sig', (t) => {
+  for (const [platform, sub, file] of [['linux-x86_64', 'appimage', 'Capri_0.1.0_amd64.AppImage'], ['windows-x86_64', 'nsis', 'Capri_0.1.0_x64-setup.exe']]) {
+    const bundle = tmp(t);
+    const dest = tmp(t);
+    fs.mkdirSync(path.join(bundle, sub));
+    fs.writeFileSync(path.join(bundle, sub, file), 'package');
+    assert.throws(() => pack.collect(platform, dest, bundle, { bridge: false }), /\.sig/);
+    assert.deepEqual(pack.collect(platform, dest, bundle, { bridge: false, requireSig: false }), [file]);
+  }
+});
+
 // --- a real minisign signature, made here with a throw-away key (the format Tauri's signer writes)
 function minisignKey() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
@@ -95,6 +106,11 @@ test('signatures: the update packages verify against the public key; a changed b
   assert.throws(() => sigs.verify(Buffer.from('the packagE'), a.sign(bytes), sigs.publicKey(a.pub)), /does not match/);
   assert.throws(() => sigs.verify(bytes, b.sign(bytes), sigs.publicKey(a.pub)), /another key/);
   assert.throws(() => sigs.publicKey('not a key'), /public key/);
+  // a signature cut down to its first two lines, or with a changed trusted comment: the updater would refuse it, so does the check
+  const full = Buffer.from(a.sign(bytes), 'base64').toString('utf8').split('\n');
+  const text = (lines) => Buffer.from(lines.join('\n')).toString('base64');
+  assert.throws(() => sigs.verify(bytes, text(full.slice(0, 2)), sigs.publicKey(a.pub)), /trusted comment/);
+  assert.throws(() => sigs.verify(bytes, text([full[0], full[1], 'trusted comment: timestamp:2 file:y', full[3], '']), sigs.publicKey(a.pub)), /trusted comment is not signed/);
   const dir = tmp(t);
   fs.writeFileSync(path.join(dir, 'Capri.AppImage'), bytes);
   fs.writeFileSync(path.join(dir, 'Capri.AppImage.sig'), a.sign(bytes));
@@ -254,8 +270,14 @@ test('the Electron package takes nothing of the Tauri build: no shell, sidecar, 
   assert.ok(included.includes('scripts/**'));
   const excluded = build.files.filter((p) => p.startsWith('!')).map((p) => p.slice(1));
   for (const file of fs.readdirSync(path.join(ROOT, 'scripts'))) {
-    if (!/tauri|sidecar|stage-frontend|release-manifest|updater-config|verify-signatures/.test(file)) continue;
+    if (!/tauri|sidecar|stage-frontend|release-manifest|updater-config|verify-signatures|draft-release|bridge-feed/.test(file)) continue;
     assert.ok(excluded.includes(`scripts/${file}`), `scripts/${file} must not be in the Electron package`);
+  }
+  // whitelist: of the scripts folder only the hooks installers, the demo and check-llm belong to the app; every other script
+  // (release, CI, probes, packaging) must be excluded, whenever it was added
+  for (const file of fs.readdirSync(path.join(ROOT, 'scripts'))) {
+    if (/^(install-.*hooks.*|demo.*|check-llm)\.js$/.test(file)) continue;
+    assert.ok(excluded.includes(`scripts/${file}`), `scripts/${file} would end up in the Electron package`);
   }
   // and what the shipped code needs is not cut: the core requires these three, the hooks the rest of src/hooks/assets
   for (const needed of ['scripts/demo-sequence.js', 'scripts/install-hooks.js', 'scripts/install-codex-hooks.js', 'scripts/install-hooks-agy.js']) {
@@ -298,5 +320,9 @@ test('the workflow is wired to the same scripts, never publishes, and pins its a
   // both draft jobs (Electron's and this one) share a concurrency group, so they cannot create two drafts at once
   assert.match(text, /group: capri-fork-release/);
   assert.match(read('.github', 'workflows', 'build.yml'), /group: capri-fork-release/);
+  // cargo test compiles generate_context!, which embeds the generated src-tauri/frontend: staged first
+  assert.ok(text.indexOf('scripts/stage-frontend.js') > 0 && text.indexOf('scripts/stage-frontend.js') < text.indexOf('cargo test --locked'));
+  // a pull request's code never sees the signing key
+  assert.equal((text.match(/github\.event_name != 'pull_request' && secrets\.TAURI_SIGNING_PRIVATE_KEY\b/g) || []).length, 2);
   for (const triple of ['macos-15', 'macos-15-intel', 'windows-latest', 'ubuntu-24.04']) assert.ok(text.includes(triple), triple);
 });

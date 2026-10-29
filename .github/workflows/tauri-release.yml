@@ -143,12 +143,16 @@ jobs:
         run: |
           node scripts/release-tauri.js versions
           npm test
+      # tauri::generate_context! embeds frontendDist (src-tauri/frontend, generated, not in git): without it cargo test does not compile
       - name: Native tests (shell and capri-hook)
         run: |
+          node scripts/stage-frontend.js
           cargo test --locked --manifest-path src-tauri/Cargo.toml
           cargo test --locked --manifest-path crates/capri-hook/Cargo.toml
       # the CLI is pinned (the `tauri` crate is ~2.12 in Cargo.toml); bump both on purpose. Cached: building it takes minutes.
-      - uses: actions/cache@v4
+      # restore + save as two steps: the CLI is saved right after it is built, not only if the whole job succeeds (a first run
+      # that fails later in the package step would otherwise rebuild it on every try)
+      - uses: actions/cache/restore@v4
         id: cli
         with:
           path: ${{ runner.temp }}/tauri-cli
@@ -156,9 +160,14 @@ jobs:
       - name: Tauri CLI
         if: steps.cli.outputs.cache-hit != 'true'
         run: cargo install tauri-cli --locked --version '=2.12.4' --root "$RUNNER_TEMP/tauri-cli"
+      - uses: actions/cache/save@v4
+        if: steps.cli.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/tauri-cli
+          key: tauri-cli-2.12.4-${{ runner.os }}-${{ runner.arch }}
       - name: Updater key present?
         env:
-          SECRET: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          SECRET: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           RELEASE: ${{ needs.plan.outputs.release }}
         run: |
           if [ -z "$CAPRI_UPDATER_PUBLIC_KEY" ] || [ -z "$SECRET" ]; then
@@ -175,8 +184,10 @@ jobs:
       - name: Package (sidecar, capri-hook, window helper, cargo tauri build, verify)
         env:
           CAPRI_TAURI_CLI: ${{ runner.temp }}/tauri-cli/bin/cargo-tauri
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # not for a pull request (the code of a branch must not see the signing key); the "Updater key present?" step then
+          # also empties the public key, so the build has updates OFF as the header says
+          TAURI_SIGNING_PRIVATE_KEY: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: node scripts/package-tauri.js --collect collected $REQUIRE_UPDATES
       # --- the packaged app starts: the core (the sidecar) is up, the bridge answers, (macOS) the window helper works
       - name: Run the package (macOS)
