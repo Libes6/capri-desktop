@@ -83,7 +83,7 @@ async function main() {
   }
 
   core.applyRender();
-  // Rust holds the single-instance lock and tells of a second launch: she shows her status, 
+  // Rust holds the single-instance lock and tells of a second launch: she shows her status
   platform.app.singleInstance(() => core.command('status'));
   platform.app.onQuit(() => core.stop());
   platform.app.installAppMenu();
