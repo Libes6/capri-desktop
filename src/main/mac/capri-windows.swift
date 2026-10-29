@@ -2,7 +2,7 @@
 //
 // Prints one JSON line on stdout whenever something changes: the window in front and the
 // ordinary app windows on the current Space, front first, as frames in global points (origin at
-// the top-left corner of the main display, y down: the same space as Electron's DIP screen
+// the top-left corner of the main display, y down: the same space as the DIP screen
 // coordinates). No titles, no app names, no contents: only window numbers and rectangles.
 //
 // Uses CGWindowListCopyWindowInfo for geometry and z-order and NSWorkspace for the active app.

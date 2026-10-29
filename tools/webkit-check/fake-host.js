@@ -1,4 +1,4 @@
-// A fake host for the renderer, for pages opened outside Electron/Tauri (webkit-check). Answers with
+// A fake host for the renderer, for pages opened outside Tauri (webkit-check). Answers with
 // the test data the server put in window.__FAKE_DATA__, logs each command, and lets a probe push
 // events: window.__fakeEmit('scope', 'capri:command', { name: 'status' }).
 (() => {

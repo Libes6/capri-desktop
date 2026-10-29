@@ -26,7 +26,7 @@ test('sidecar process: protocol-only stdout, a second launch shows her status, q
   fs.mkdirSync(home);
   const port = await freePort();
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'sidecar', 'main.js')], {
-    env: { ...process.env, CAPRI_NO_MIGRATE: '1', CAPRI_USER_DATA: dir, CAPRI_PORT: String(port), CAPRI_DEBUG: '', CAPRI_DEV: '' },
+    env: { ...process.env, CAPRI_USER_DATA: dir, CAPRI_PORT: String(port), CAPRI_DEBUG: '', CAPRI_DEV: '' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const seen = [];

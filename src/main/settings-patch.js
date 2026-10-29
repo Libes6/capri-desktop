@@ -1,7 +1,7 @@
 'use strict';
 
 // What her settings window may change, checked in main before anything is saved. Pure (no
-// Electron): main passes what it knows (her languages, the providers, the models, the screens,
+// platform): main passes what it knows (her languages, the providers, the models, the screens,
 // what this computer can do), so every rule can be tested. Anything not listed here is refused:
 // the window can't write her memories, keys (they have their own path, checkKey), hooks or history.
 

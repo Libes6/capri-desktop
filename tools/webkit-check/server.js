@@ -38,7 +38,7 @@ function data() {
     keys: { openai: true }, envKeys: {}, model: 'test-model', models: ['test-model', 'other-model'], features, autostart: false,
     screen: { index: 0, count: 2, width: 1440, height: 900 },
     screens: [{ id: 1, width: 1440, height: 900 }, { id: 2, width: 1920, height: 1080 }], renderNow: 'auto',
-    about: { version: '0.0.0-webkit-check', platform: 'darwin', arch: 'arm64', electron: 'none', session: null },
+    about: { version: '0.0.0-webkit-check', platform: 'darwin', arch: 'arm64', runtime: 'none', session: null },
     updates: { kind: 'available', mode: 'notify', version: '9.9.9', canDownload: false },
   });
   return { config: CONFIG, view, screens: { current: 1, origin: { x: 0, y: 0 }, list: [{ id: 1, x: 0, y: 0, w: 1440, h: 900 }, { id: 2, x: 1440, y: 0, w: 1920, h: 1080 }] } };

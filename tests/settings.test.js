@@ -3,9 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { EventEmitter } = require('node:events');
 const { settingsView, SECTIONS } = require('../src/main/settings-view');
-const { createSettingsWindow } = require('../src/main/settings-window');
 const { TRAY, SETTINGS, LANGS } = require('../src/main/labels');
 const { DEFAULTS } = require('../src/main/config');
 
@@ -21,7 +19,7 @@ const facts = (extra = {}) => ({
   features: { autostart: true, windowTracking: false },
   autostart: false,
   screen: { index: 0, count: 2, width: 1512, height: 982 },
-  about: { version: '0.1.0', platform: 'darwin', arch: 'arm64', electron: '44.9.3' },
+  about: { version: '0.1.0', platform: 'darwin', arch: 'arm64', runtime: 'tauri 2 / node 22' },
   ...extra,
 });
 const row = (view, section, id) => view.sections.find((s) => s.id === section).rows.find((r) => r.id === id);
@@ -90,132 +88,11 @@ test('size, sound, the assistant watched and no assistant', () => {
   assert.equal(row(settingsView(facts()), 'about', 'system').value, 'macOS · arm64');
 });
 
-// A stand-in for Electron's BrowserWindow: enough of it for settings-window.js.
-function fakeElectron() {
-  const made = [];
-  class FakeWindow extends EventEmitter {
-    constructor(options) {
-      super();
-      this.options = options;
-      this.destroyed = false;
-      this.visible = false;
-      this.focused = false;
-      this.minimized = false;
-      this.sent = [];
-      this.webContents = Object.assign(new EventEmitter(), {
-        setWindowOpenHandler: (fn) => { this.openHandler = fn; },
-        send: (channel, payload) => this.sent.push([channel, payload]),
-      });
-      made.push(this);
-    }
-    isDestroyed() { return this.destroyed; }
-    isMinimized() { return this.minimized; }
-    restore() { this.minimized = false; }
-    show() { this.visible = true; }
-    focus() { this.focused = true; }
-    setTitle(title) { this.title = title; }
-    loadURL(url) { this.url = url; }
-    removeMenu() { this.menuRemoved = true; }
-    close() {
-      this.destroyed = true;
-      this.emit('closed');
-    }
-  }
-  return { FakeWindow, made };
-}
-
-function makeSettings(extra = {}) {
-  const { FakeWindow, made } = fakeElectron();
-  let focusApp = 0;
-  let closed = 0;
-  const settings = createSettingsWindow({
-    BrowserWindow: FakeWindow,
-    preload: '/app/src/settings-preload.js',
-    url: 'capri://app/src/renderer/settings.html',
-    view: () => ({ title: 'Capri — Settings' }),
-    area: () => ({ x: 100, y: 50, width: 1440, height: 900 }),
-    focusApp: () => { focusApp++; },
-    onClosed: () => { closed++; },
-    ...extra,
-  });
-  return { settings, made, counts: () => ({ focusApp, closed }) };
-}
-
-test('one window: opening again brings the same one forward with the focus', () => {
-  const { settings, made, counts } = makeSettings();
-  const win = settings.open();
-  assert.equal(made.length, 1);
-  assert.equal(win.visible, false); // shown once its page is ready, not blank
-  win.emit('ready-to-show');
-  assert.equal(win.visible, true);
-  assert.equal(win.focused, true);
-  win.focused = false;
-  win.minimized = true;
-  assert.equal(settings.open(), win);
-  assert.equal(made.length, 1);
-  assert.equal(win.minimized, false);
-  assert.equal(win.focused, true);
-  assert.equal(counts().focusApp, 2);
-});
-
-test('a secure, ordinary window in the middle of the screen', () => {
-  const { settings } = makeSettings();
-  const win = settings.open();
-  const { webPreferences: web, ...options } = win.options;
-  assert.equal(web.contextIsolation, true);
-  assert.equal(web.sandbox, true);
-  assert.equal(web.nodeIntegration, false);
-  assert.equal(web.preload, '/app/src/settings-preload.js');
-  assert.equal(options.x, 100 + (1440 - options.width) / 2);
-  assert.equal(options.y, 50 + (900 - options.height) / 2);
-  // nothing that would make it an overlay: no click-through, no always-on-top, focusable, in the taskbar
-  for (const key of ['transparent', 'alwaysOnTop', 'skipTaskbar', 'frame', 'focusable']) assert.equal(key in options, false, key);
-  assert.equal(win.menuRemoved, true);
-  assert.deepEqual(win.openHandler(), { action: 'deny' });
-  let prevented = false;
-  win.webContents.emit('will-navigate', { preventDefault: () => { prevented = true; } });
-  assert.equal(prevented, true);
-});
-
-test('fits a small screen', () => {
-  const { settings } = makeSettings({ area: () => ({ x: 0, y: 0, width: 600, height: 400 }) });
-  const { options } = settings.open();
-  assert.deepEqual([options.x, options.y, options.width, options.height], [0, 0, 600, 400]);
-});
-
-test('closed: gone for good, the next open makes a new one; update only reaches an open window', () => {
-  const { settings, made, counts } = makeSettings();
-  settings.update(); // nothing open: nothing to do
-  const win = settings.open();
-  assert.equal(settings.owns(win.webContents), true);
-  assert.equal(settings.owns({}), false);
-  settings.update();
-  assert.deepEqual(win.sent, [['settings:view', { title: 'Capri — Settings' }]]);
-  assert.equal(win.title, 'Capri — Settings');
-  settings.close();
-  assert.equal(settings.isOpen(), false);
-  assert.equal(settings.window(), null);
-  assert.equal(settings.owns(win.webContents), false);
-  assert.equal(counts().closed, 1);
-  settings.close(); // twice: no harm
-  win.emit('ready-to-show'); // late event from the old window: ignored
-  assert.equal(win.visible, false);
-  const next = settings.open();
-  assert.notEqual(next, win);
-  assert.equal(made.length, 2);
-});
-
-test('the settings page reaches main only through its own preload', () => {
+test('the settings page reaches main only through the protocol, and every settings command checks its sender', () => {
   const root = path.join(__dirname, '..');
-  const preload = fs.readFileSync(path.join(root, 'src/settings-preload.js'), 'utf8');
-  const channels = [...preload.matchAll(/ipcRenderer\.(?:invoke|send)\('([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(channels)].sort(), [
-    'settings:close', 'settings:key', 'settings:menu', 'settings:ready', 'settings:reset', 'settings:restart', 'settings:set', 'settings:view',
-    'updates:check', 'updates:download', 'updates:install', 'updates:page',
-  ]);
-  // and what main sends it
-  const heard = [...preload.matchAll(/ipcRenderer\.on\('([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(heard)].sort(), ['settings:section', 'settings:view', 'updates:status']);
+  const { COMMANDS } = require('../src/protocol');
+  const channels = COMMANDS.filter((c) => c.scope === 'settings').map((c) => c.channel);
+  assert.ok(channels.length >= 12);
   const html = fs.readFileSync(path.join(root, 'src/renderer/settings.html'), 'utf8');
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /script-src 'self'/);
@@ -226,14 +103,4 @@ test('the settings page reaches main only through its own preload', () => {
     assert.ok(at >= 0, channel);
     assert.match(main.slice(at, at + 160), /settings\?\.owns\(sender\)/, channel);
   }
-});
-
-test('update while the page is already gone (closing, quitting): nothing sent, no throw', () => {
-  const { settings } = makeSettings();
-  const win = settings.open();
-  win.webContents.isDestroyed = () => true;
-  win.webContents.send = () => { throw new Error('Object has been destroyed'); };
-  assert.doesNotThrow(() => settings.update());
-  assert.equal(settings.isOpen(), false);
-  assert.equal(settings.owns(win.webContents), false);
 });

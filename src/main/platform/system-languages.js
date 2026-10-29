@@ -1,7 +1,6 @@
 'use strict';
 
-// The system's language preference list for the Tauri build (TAURI-11; CAPRI-01). Electron asks
-// `app.getPreferredSystemLanguages()`; the sidecar is plain Node, whose `Intl` locale comes from the
+// The system's language preference list for the Tauri build (TAURI-11; CAPRI-01). The sidecar is plain Node, whose `Intl` locale comes from the
 // environment (LANG), and an app started from the Finder or the Start menu has none: she would speak
 // English to a Russian Mac. So the list is asked of the system once, at start, where the system keeps it:
 //   macOS   `defaults read -g AppleLanguages`   (System Settings > Language & Region, in order)

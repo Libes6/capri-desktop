@@ -33,24 +33,9 @@ function quoteIfNeeded(p) {
   return /\s/.test(p) ? `"${p}"` : p;
 }
 
-function hasNode() {
-  try {
-    return spawnSync('node', ['-v'], { windowsHide: true, timeout: 3000 }).status === 0;
-  } catch {
-    return false;
-  }
-}
-
 function legacyCommand(eventType) {
-  const script = path.resolve(__dirname, '..', 'hooks', 'capri-agy-hook.js')
-    .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
-  if (!process.versions.electron) {
-    return `${quoteIfNeeded(process.execPath)} ${quoteIfNeeded(script)} ${eventType}`;
-  }
-  if (hasNode()) {
-    return `node ${quoteIfNeeded(script)} ${eventType}`;
-  }
-  return `ELECTRON_RUN_AS_NODE=1 ${quoteIfNeeded(process.execPath)} ${quoteIfNeeded(script)} ${eventType}`;
+  const script = path.resolve(__dirname, '..', 'hooks', 'capri-agy-hook.js');
+  return `node ${quoteIfNeeded(script)} ${eventType}`;
 }
 
 function hookCommand(eventType) {
@@ -146,17 +131,7 @@ function status() {
   }
 }
 
-// Rewrite old Electron/Node entries to the capri-hook binary (no-op without the binary).
-function migrate(bin) {
-  return hooksCommand.migrateFile(settingsPath(), 'agy', bin);
-}
-
-// The way back to the Electron/Node build: `capri-hook` entries become this build's Node/Electron command.
-function revert() {
-  return hooksCommand.revertFile(settingsPath(), 'agy', (eventType) => legacyCommand(eventType));
-}
-
-module.exports = { install, uninstall, status, migrate, revert, EVENTS };
+module.exports = { install, uninstall, status, EVENTS };
 
 if (require.main === module) {
   const arg = process.argv[2];

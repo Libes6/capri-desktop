@@ -1,10 +1,8 @@
 'use strict';
 
-// API keys sealed in config.json as "kc:<base64>" (Electron's safeStorage ones are "enc:", setup.js
-// createKeys tells them apart): AES-256-GCM under the master key that lives in the system key store
+// API keys sealed in config.json as "kc:<base64>" (setup.js createKeys tells them from other kinds): AES-256-GCM under the master key that lives in the system key store
 // (src-tauri/src/secrets.rs). The blob is: version byte 1 | 12-byte nonce | ciphertext | 16-byte tag.
-// Shared by the Tauri sidecar platform (opens and seals) and by the last Electron build, which seals
-// the keys it has for the Tauri build to find (migrate-prepare.js, TAURI-09).
+// Used by the Tauri sidecar platform (opens and seals).
 
 const crypto = require('node:crypto');
 

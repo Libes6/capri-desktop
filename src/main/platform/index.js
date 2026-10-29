@@ -1,13 +1,11 @@
 'use strict';
 
 // The platform: everything the core of Capri (config, chat, settings, the tray menu's rules…) asks of
-// the system it runs on, in narrow methods. The core never imports Electron; it is given one of
-// these (TAURI-01, docs/TAURI_MIGRATION_TASKS.md):
-//   platform/electron.js  the Electron one (the only file that touches Electron's API)
+// the system it runs on, in narrow methods. The core imports no shell; it is given one of these:
+//   platform/sidecar.js   the Tauri one: the same methods, answered by Rust through the sidecar's RPC
 //   platform/fake.js      a recording stand-in for the tests, and for the core to run in plain `node`
-// A Tauri one is to come (TAURI-04): the same methods, answered by Rust through the sidecar's RPC.
 //
-// Sections and their methods (names only: what each one takes and returns is in platform/electron.js,
+// Sections and their methods (names only: what each one takes and returns is in platform/sidecar.js,
 // and in fake.js for what a test can count on):
 //   paths      get(name) -> string, setUserData(dir)
 //              names: userData home desktop documents downloads pictures music videos temp exe
@@ -15,7 +13,7 @@
 //   app        name() version() runtimeVersion() isPackaged() languages() whenReady() onQuit(fn)
 //              singleInstance(onSecond) -> bool, stayAlive() relaunch() quit() exit(code) focus()
 //              hideFromDock() setAppId(id) installAppMenu() appForProtocol(url) -> bool
-//              setRenderMode(mode) gpuStatus() serveAssets({ userSoundsDir }) userSoundUrl(file) -> string
+//              setRenderMode(mode) gpuStatus() userSoundUrl(file) -> string
 //   autostart  isEnabled() -> bool, set(on)
 //   screens    all() primary() nearest(point) cursor() toDip(rect) on(event, fn) removeListener(event, fn)
 //   power      on(event, fn) removeListener(event, fn) getSystemIdleState(seconds)
@@ -27,19 +25,17 @@
 //   dialogs    pickFolder(defaultPath) -> path | null
 //   tray       create({ onClick }) -> a tray (OVERLAY_API's sibling: TRAY_API)
 //   windows    createOverlay({ area, onReady }) -> an overlay (OVERLAY_API)
-//              createSettings({ view, area }) -> the settings window (settings-window.js)
+//              createSettings({ view, area }) -> the settings window (src-tauri/src/settings_window.rs)
 //              createDemoTerminal({ ...bounds, title, background, alwaysOnTop, html, onClosed })
 //   ipc        on(channel, fn(arg, sender)) handle(channel, fn(arg, sender))
-//   updater    get() -> { autoUpdater, CancellationToken } (electron-updater's, for updates.js)
-// `native`: Electron's own objects, for the Electron shell only (--dev routes, the smoke test).
-// The core must never reach for it (tests/core-portable.test.js looks).
+//   updater    get() -> { tauri: { status, check, download(progress), install } } (Rust's updater, for updates.js)
 
 const SHAPE = {
   paths: ['get', 'setUserData'],
   app: [
     'name', 'version', 'runtimeVersion', 'isPackaged', 'languages', 'whenReady', 'onQuit', 'singleInstance', 'stayAlive',
     'relaunch', 'quit', 'exit', 'focus', 'hideFromDock', 'setAppId', 'installAppMenu', 'appForProtocol', 'setRenderMode',
-    'gpuStatus', 'serveAssets', 'userSoundUrl',
+    'gpuStatus', 'userSoundUrl',
   ],
   autostart: ['isEnabled', 'set'],
   screens: ['all', 'primary', 'nearest', 'cursor', 'toDip', 'on', 'removeListener'],

@@ -38,7 +38,7 @@ function serializeMenu(template, generation) {
   return { generation, items: walk(template), clicks };
 }
 
-// A click as Electron gives it to the template: the item after the click (a checkbox flipped, a radio
+// A click as the template's handlers take it: the item after the click (a checkbox flipped, a radio
 // picked). `checked` is what Rust says the item is now.
 function runClick(clicks, id, checked, log = () => {}) {
   const item = clicks.get(id);

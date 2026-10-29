@@ -1,9 +1,9 @@
 'use strict';
 
 // One place that decides what command the assistants' hook settings run, and which existing
-// entries are Capri's. Default (Electron/Node): the JS hooks, as before. When the Rust
-// `capri-hook` binary is found next to the app, the command points at it instead and the
-// old Electron/Node entries can be migrated.
+// entries are Capri's. When the Rust `capri-hook` binary is found next to the app, the command points
+// at it; without it (a clone) the JS hooks run under plain `node`. Entries of the old Electron build
+// (ELECTRON_RUN_AS_NODE=1 "<Capri>" hook.js) are still recognised, so that installing the hooks replaces them.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -36,7 +36,7 @@ function binCommand(assistant, eventType, bin) {
   return `${quote(bin)} --assistant ${assistant}${assistant === 'agy' && eventType ? ` ${eventType}` : ''}`;
 }
 
-// `legacy` is the previous Electron/Node command, built by the installer, used when no binary exists.
+// `legacy` is the `node <hook.js>` command, built by the installer, used when no binary exists.
 function hookCommand(assistant, { eventType, legacy, bin = findHookBin() } = {}) {
   return binCommand(assistant, eventType, bin) || (typeof legacy === 'function' ? legacy() : legacy);
 }
@@ -65,88 +65,7 @@ function containsCapriCommand(value, assistants = ASSISTANTS) {
   return Object.values(value).some((v) => containsCapriCommand(v, assistants));
 }
 
-// AGY commands end with the event name the installer appended.
-function agyEventType(command) {
-  const words = String(command).trim().split(/\s+/);
-  return words[words.length - 1].replace(/^"|"$/g, '');
-}
-
-// Walks parsed settings and rewrites Capri's own commands (old Electron/Node form, or a binary path that
-// moved) to the current command. Everything else, including the user's other hooks, is untouched.
-function rewriteCommands(node, assistant, bin) {
-  let changed = 0;
-  const visit = (value) => {
-    if (Array.isArray(value)) return value.forEach(visit);
-    if (!value || typeof value !== 'object') return;
-    if (typeof value.command === 'string' && isCapriCommand(value.command, assistant)) {
-      const type = assistant === 'agy' ? agyEventType(value.command) : undefined;
-      const next = binCommand(assistant, type, bin);
-      if (next !== value.command) {
-        value.command = next;
-        changed += 1;
-      }
-    }
-    Object.values(value).forEach(visit);
-  };
-  visit(node);
-  return changed;
-}
-
-// Rewrites one assistant's settings file in place (timestamped backup first). Without a binary it
-// does nothing: the Electron build keeps its Node commands. Returns { file, migrated }.
-function migrateFile(file, assistant, bin = findHookBin()) {
-  if (!bin || !fs.existsSync(file)) return { file, migrated: 0 };
-  let settings;
-  try {
-    settings = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return { file, migrated: 0 }; // never touch a file we cannot read
-  }
-  const migrated = rewriteCommands(settings, assistant, bin);
-  if (migrated) {
-    fs.copyFileSync(file, `${file}.capri-backup-${new Date().toISOString().replace(/[:.]/g, '-')}`);
-    fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
-  }
-  return { file, migrated };
-}
-
-// The way back (TAURI-09, going back to the Electron build): Capri's `capri-hook` entries become the
-// command `legacyFor(eventType)` gives (the installer's Electron/Node one, built by the build that is
-// running). Same rules as migrateFile: only Capri's own entries, a timestamped backup, a file that does
-// not parse is left alone. Returns { file, reverted }.
-function revertFile(file, assistant, legacyFor) {
-  if (typeof legacyFor !== 'function' || !fs.existsSync(file)) return { file, reverted: 0 };
-  let settings;
-  try {
-    settings = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return { file, reverted: 0 };
-  }
-  let reverted = 0;
-  const visit = (value) => {
-    if (Array.isArray(value)) return value.forEach(visit);
-    if (!value || typeof value !== 'object') return;
-    if (typeof value.command === 'string') {
-      const found = classify(value.command);
-      if (found?.assistant === assistant && found.form === 'bin') {
-        const next = legacyFor(assistant === 'agy' ? agyEventType(value.command) : undefined);
-        if (next && next !== value.command) {
-          value.command = next;
-          reverted += 1;
-        }
-      }
-    }
-    Object.values(value).forEach(visit);
-  };
-  visit(settings);
-  if (reverted) {
-    fs.copyFileSync(file, `${file}.capri-backup-${new Date().toISOString().replace(/[:.]/g, '-')}`);
-    fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
-  }
-  return { file, reverted };
-}
-
 module.exports = {
   BIN_NAME, SCRIPTS, ASSISTANTS, findHookBin, binCommand, hookCommand, classify,
-  isCapriCommand, isLegacyCommand, containsCapriCommand, rewriteCommands, migrateFile, revertFile,
+  isCapriCommand, isLegacyCommand, containsCapriCommand,
 };

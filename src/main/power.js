@@ -3,16 +3,16 @@
 // Your screen locked or the computer asleep (CAPRI-07): main.js tells her overlay, which stops its
 // decorative work (renderer pause.js) and starts it again when you're back. Main itself goes on:
 // Claude Code's events still come in through bridge.js and are passed on, her reminders still come
-// due. See docs/POWER_EVENTS.md for which of Electron's powerMonitor events come on which system.
+// due. See docs/POWER_EVENTS.md for which power events come on which system.
 //
 // Away = asleep (suspend .. resume) or locked (lock-screen .. unlock-screen) or, on macOS, switched
 // to another user (user-did-resign-active .. user-did-become-active). Each is followed on its own:
 // woken with the screen still locked, she stays paused until it's unlocked.
 //
-// Electron's events can be missed (an unlock that never comes would leave her frozen), so while she
+// The system's events can be missed (an unlock that never comes would leave her frozen), so while she
 // thinks the screen is locked, on macOS and Windows (where Chromium can tell a locked session) it
 // asks powerMonitor.getSystemIdleState now and then, and at each wake: not 'locked' any more is an
-// unlock. Linux has no lock events in Electron: there only sleep pauses her.
+// unlock. Linux has no lock events here: there only sleep pauses her.
 
 const EVENTS = {
   suspend: ['asleep', true],
@@ -25,7 +25,7 @@ const EVENTS = {
 const RECHECK_MS = 30 * 1000;
 const LOCK_AWARE = new Set(['darwin', 'win32']); // getSystemIdleState can say 'locked' there
 
-// power: Electron's powerMonitor (or a stand-in), onChange({ away, why }) when away changes,
+// power: the platform's power events (or a stand-in), onChange({ away, why }) when away changes,
 // later: timers (the tests' own), log: where the changes are written
 function watchPower({
   power, platform = process.platform, onChange = () => {}, recheckMs = RECHECK_MS,

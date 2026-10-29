@@ -888,18 +888,6 @@ async function boot() {
   if (!config.welcomed || (config.claude && !hooks.installed)) guide.welcome();
   else panel.say({ kind: 'info', line: brain.onlineLine(), hold: 4000 });
 
-  // API keys that did not come over from the version of her before (the Electron one): she says so once
-  // per launch, at a quiet moment, and where to enter them again (TAURI-09)
-  if (config.keysLost?.length) {
-    const text = pickLine(brain.t.keysLost).replaceAll('{providers}', config.keysLost.join(', '));
-    let tries = 0;
-    const say = () => {
-      if (occupied({ panel, chat, guide, capri }) && tries++ < 20) return setTimeout(say, 5000);
-      panel.say({ kind: 'info', face: 'aside', line: text, hold: 14000 });
-    };
-    setTimeout(say, 7000);
-  }
-
   // In the evening, after a real day's work, she brings you her report card once, on her own,
   // at a quiet moment.
   pause.every(() => {

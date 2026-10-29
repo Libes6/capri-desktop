@@ -18,7 +18,7 @@ const files = [];
   }
 })(dir);
 
-const FORBIDDEN = /\b(?:window|globalThis|self|top|parent)\s*\.\s*(?:host|settingsHost|capriSettings|__CAPRI_HOST__|__TAURI__|electron|ipcRenderer)\b|\bipcRenderer\b|require\(\s*['"]electron['"]\s*\)|@tauri-apps\/api\//;
+const FORBIDDEN = /\b(?:window|globalThis|self|top|parent)\s*\.\s*(?:host|settingsHost|capriSettings|__CAPRI_HOST__|__TAURI__|ipcRenderer)\b|\bipcRenderer\b|require\(\s*['"]electron['"]\s*\)|@tauri-apps\/api\//;
 
 test('no renderer file but host.js touches the native bridge', () => {
   const bad = [];
@@ -38,7 +38,7 @@ test('the pages that talk to the host import it from host.js', () => {
   }
 });
 
-test('host.js offers every command of both preloads, over invoke and on', async () => {
+test('host.js offers every command and event of the protocol, over invoke and on', async () => {
   const { host, settingsHost } = await import(pathToFileURL(path.join(dir, 'js/host.js')).href);
   const sent = [];
   global.window = {
@@ -48,10 +48,18 @@ test('host.js offers every command of both preloads, over invoke and on', async 
     },
   };
   try {
-    const overlay = fs.readFileSync(path.join(__dirname, '../src/preload.js'), 'utf8');
-    const names = [...overlay.matchAll(/^  (\w+):/gm)].map((m) => m[1]);
-    assert.ok(names.length > 50);
-    for (const n of names) assert.equal(typeof host[n], 'function', `overlay ${n}`);
+    const { COMMANDS, EVENTS } = require('../src/protocol');
+    assert.ok(COMMANDS.length > 50);
+    for (const c of COMMANDS) {
+      const target = c.scope === 'overlay' ? host : settingsHost;
+      const fn = c.name.startsWith('updates.') ? target.updates?.[c.name.slice(8)] : target[c.name];
+      assert.equal(typeof fn, 'function', `${c.scope} ${c.name}`);
+    }
+    for (const e of EVENTS) {
+      const target = e.scope === 'overlay' ? host : settingsHost;
+      const fn = e.name.startsWith('updates.') ? target.updates?.[e.name.slice(8)] : target[e.name];
+      assert.equal(typeof fn, 'function', `${e.scope} ${e.name}`);
+    }
 
     host.setConfig({ a: 1 });
     host.onConfig(() => {});
