@@ -212,8 +212,20 @@ pub fn create(app: &AppHandle, area: Rect) -> Result<Rect, String> {
 
 pub fn click_through(app: &AppHandle, on: bool) {
     let apply = gate(|g| g.request(on, buttons_down()));
-    trace(|| format!("click_through(ignore={on}) -> {apply:?}"));
+    trace(|| format!("click_through(ignore={on}) -> {apply:?} (menu open: {})", gate(|g| g.menu_is_open())));
     if let (Some(ignore), Ok(win)) = (apply, window(app)) {
+        let _ = win.set_ignore_cursor_events(ignore);
+    }
+    NUDGE.store(true, Ordering::SeqCst);
+}
+
+/// Her native menu is about to open (`opened`) or has closed: see `HitGate::menu_opened`. The window calls go to the
+/// main thread in the order they are made, so the one made before the menu's popup is applied before the menu
+/// takes the thread over, and the one made after it, once the menu has closed.
+pub fn menu_state(app: &AppHandle, opened: bool) {
+    let ignore = gate(|g| if opened { g.menu_opened(); true } else { g.menu_closed() });
+    trace(|| format!("menu {} -> window ignore={ignore}", if opened { "opened" } else { "closed" }));
+    if let Ok(win) = window(app) {
         let _ = win.set_ignore_cursor_events(ignore);
     }
     NUDGE.store(true, Ordering::SeqCst);
@@ -369,8 +381,11 @@ fn tell_page(win: &WebviewWindow, page: Page) {
 fn after_stall(app: &AppHandle) {
     if let Ok(win) = window(app) {
         apply_level(&win);
-        let ignoring = gate(|g| g.ignoring());
-        let _ = win.set_ignore_cursor_events(ignoring);
+        // not while her menu is open: she would take the clicks meant for it
+        if !gate(|g| g.menu_is_open()) {
+            let ignoring = gate(|g| g.ignoring());
+            let _ = win.set_ignore_cursor_events(ignoring);
+        }
         #[cfg(target_os = "macos")]
         {
             let w = win.clone();

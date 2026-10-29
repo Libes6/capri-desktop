@@ -116,6 +116,9 @@ pub fn set_menu(app: &AppHandle, params: &Value) -> Result<(), String> {
 
 /// A click on one of her items (menu.rs hands it over): what it is now, back to the core.
 pub fn on_item(app: &AppHandle, id: &str) {
+    if std::env::var_os("CAPRI_TRACE_MENU").is_some() {
+        println!("[capri] menu click {id}");
+    }
     let st = state(app);
     let st = st.0.lock().unwrap();
     let Some(handle) = st.handles.get(id).or_else(|| st.previous.get(id)) else { return };
@@ -144,8 +147,14 @@ pub fn popup(app: &AppHandle, params: &Value) -> Result<(), String> {
     let Some(win) = app.get_webview_window(label) else { return Ok(()) };
     let st = state(app);
     let Some(m) = st.0.lock().unwrap().menu.clone() else { return Ok(()) };
+    let handle = app.clone();
     std::thread::spawn(move || {
-        if let Err(e) = m.popup(win.as_ref().window()) {
+        // her overlay is above the menu: it must let the menu's clicks through while the menu is open (the pointer
+        // was over her when she was right-clicked, so it takes clicks now)
+        crate::overlay::menu_state(&handle, true);
+        let r = m.popup(win.as_ref().window());
+        crate::overlay::menu_state(&handle, false);
+        if let Err(e) = r {
             eprintln!("[capri] tray popup: {e}");
         }
     });

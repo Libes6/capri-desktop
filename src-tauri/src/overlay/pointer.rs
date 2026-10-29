@@ -123,11 +123,13 @@ impl Poller {
 pub struct HitGate {
     ignoring: bool,
     held: bool,
+    /// Her native menu is open: the window stays click-through whatever the page asks (see `menu_opened`).
+    menu: bool,
 }
 
 impl HitGate {
     pub fn new() -> Self {
-        HitGate { ignoring: true, held: false }
+        HitGate { ignoring: true, held: false, menu: false }
     }
     pub fn ignoring(&self) -> bool {
         self.ignoring
@@ -136,6 +138,12 @@ impl HitGate {
     /// A window that takes clicks and is asked to let them through while a button is down keeps taking them
     /// until the button is up (`release` then does it).
     pub fn request(&mut self, ignore: bool, button_down: bool) -> Option<bool> {
+        if self.menu {
+            // remembered for when the menu closes; the window is not touched meanwhile
+            self.held = false;
+            self.ignoring = ignore;
+            return None;
+        }
         if ignore && !self.ignoring && button_down {
             self.held = true;
             return None;
@@ -144,8 +152,29 @@ impl HitGate {
         self.ignoring = ignore;
         Some(ignore)
     }
+    /// Her native menu opens (right click on her, the icon in the menu bar): her window lets every click through
+    /// until it closes. It is above the menu (level 1000, the menu's is 101); if it took clicks (the pointer was
+    /// over her when the menu opened) the menu would be shown but a click on an item would land on her window
+    /// and only close the menu. While the menu is open the main thread is inside its tracking loop, so a later
+    /// `set_ignore_cursor_events` from another thread would wait for the close: the page's requests (`request`)
+    /// are remembered here and applied by `menu_closed`.
+    pub fn menu_opened(&mut self) {
+        self.menu = true;
+        self.held = false;
+    }
+    /// The menu closed: what the window should be now (the last thing the page asked for).
+    pub fn menu_closed(&mut self) -> bool {
+        self.menu = false;
+        self.ignoring
+    }
+    pub fn menu_is_open(&self) -> bool {
+        self.menu
+    }
     /// Called every tick: the held request, once no button is down.
     pub fn release(&mut self, button_down: bool) -> Option<bool> {
+        if self.menu {
+            return None;
+        }
         if self.held && !button_down {
             self.held = false;
             self.ignoring = true;
@@ -297,5 +326,27 @@ mod tests {
         assert_eq!(g.request(false, false), Some(false));
         assert_eq!(g.request(true, false), Some(true));
         assert_eq!(g.request(true, false), Some(true));
+    }
+
+    #[test]
+    fn while_her_menu_is_open_the_page_cannot_take_the_window_and_gets_it_back_after() {
+        let mut g = HitGate::new();
+        assert_eq!(g.request(false, false), Some(false)); // pointer over her
+        g.menu_opened();
+        assert!(g.menu_is_open());
+        // the page leaves and comes back while the menu is open: nothing is applied to the window
+        assert_eq!(g.request(true, false), None);
+        assert_eq!(g.release(false), None);
+        assert_eq!(g.request(false, false), None);
+        // a click on an item is not held either
+        assert_eq!(g.request(true, true), None);
+        assert_eq!(g.request(false, false), None);
+        // the menu closes with the pointer over her again: she takes clicks
+        assert!(!g.menu_closed());
+        assert!(!g.menu_is_open());
+        assert_eq!(g.request(true, false), Some(true));
+        // and a menu closed over an empty screen leaves her click-through
+        g.menu_opened();
+        assert!(g.menu_closed());
     }
 }
