@@ -63,6 +63,12 @@ test('the binary is found by env, and in the resources directory of a packaged a
   assert.equal(hc.findHookBin({ env: {}, resourcesPath: path.dirname(s.binPath) }), s.binPath);
   assert.equal(hc.findHookBin({ env: {}, resourcesPath: s.dir + '-none', dirs: [path.dirname(s.binPath)] }), s.binPath);
   assert.equal(hc.findHookBin({ env: {}, resourcesPath: path.join(s.dir, 'empty') }), null);
+  // the sidecar of a packaged app: CAPRI_RESOURCES is the resources folder, the binary is in its bin/
+  assert.equal(hc.findHookBin({ env: { CAPRI_RESOURCES: path.dirname(s.binPath) } }), s.binPath);
+  fs.mkdirSync(path.join(s.dir, 'pkg', 'bin'), { recursive: true });
+  const packed = path.join(s.dir, 'pkg', 'bin', path.basename(s.binPath));
+  fs.copyFileSync(s.binPath, packed);
+  assert.equal(hc.findHookBin({ env: { CAPRI_RESOURCES: path.join(s.dir, 'pkg') } }), packed);
 });
 
 test('command format: quoted, no env prefix, spaces and Windows paths survive', () => {

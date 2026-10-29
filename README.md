@@ -302,7 +302,7 @@ own. You can choose another one in her menu.
 
 ### Quick start (Windows, no coding)
 
-1. Download **`Capri-Setup-x.y.z.exe`** from the [latest release](https://github.com/mochiiwuff/capri-desktop/releases/latest)
+1. Download **`Capri-x.y.z-Windows-x64-setup.exe`** from the [latest release](https://github.com/mochiiwuff/capri-desktop/releases/latest)
    and run it. It installs for your user only (no admin rights), adds a desktop shortcut and starts Capri.
    You don't need Node.js or anything else.
 2. The installer isn't signed (a code-signing certificate costs money), so Windows SmartScreen may say

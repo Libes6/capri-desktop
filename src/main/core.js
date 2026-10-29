@@ -192,7 +192,7 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     overlay = platform.windows.createOverlay({ area: overlayArea().area, onReady: fitOverlay });
   }
 
-  // Away (screen locked, asleep) or back: the overlay's only word of it (preload.js onPower).
+  // Away (screen locked, asleep) or back: the overlay's only word of it (host.onPower).
   function sendPower() {
     if (powerWatch) overlay?.send('power:state', powerWatch.state());
   }
@@ -637,7 +637,7 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
   ipcHandle('config:get', () => rendererConfig());
-  // her settings window : answered only for that window
+  // her settings window: answered only for that window
   ipcHandle('settings:view', (_arg, sender) => (settings?.owns(sender) ? settingsView(settingsFacts()) : null));
   ipcOn('settings:close', (_arg, sender) => settings?.owns(sender) && settings.close());
   ipcOn('settings:menu', (_arg, sender) => settings?.owns(sender) && tray?.popup('settings'));

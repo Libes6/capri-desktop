@@ -11,9 +11,11 @@ const { execFileSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const FORBIDDEN = [
-  /require\(\s*['"]electron(-updater|-builder)?(\/[^'"]*)?['"]\s*\)/,
-  /from\s+['"]electron(-updater|-builder)?['"]/,
-  /import\(\s*['"]electron/,
+  /require(?:\.resolve)?\(\s*['"`]electron(-updater|-builder)?(\/[^'"`]*)?['"`]\s*\)/,
+  /(?:from|import)\s+['"`]electron(-updater|-builder)?['"`]/,
+  /import\(\s*['"`]electron/,
+  /\bnpx\s+(?:--\S+\s+)*electron\b/,
+  /\belectron\s+(?:\.|scripts\/)/,
   /\belectron-builder\b/,
   /\belectron-updater\b/,
   /\bELECTRON_RUN_AS_NODE\b/,

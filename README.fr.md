@@ -279,7 +279,7 @@ système. Tu peux en choisir une autre dans son menu.
 
 ### Démarrage rapide (Windows, sans coder)
 
-1. Télécharge **`Capri-Setup-x.y.z.exe`** dans la [dernière release](https://github.com/mochiiwuff/capri-desktop/releases/latest)
+1. Télécharge **`Capri-x.y.z-Windows-x64-setup.exe`** dans la [dernière release](https://github.com/mochiiwuff/capri-desktop/releases/latest)
    et lance-le. Il s'installe pour ton utilisateur seulement (pas besoin d'être administrateur), ajoute un raccourci
    sur le bureau et lance Capri. Pas besoin de Node.js ni de rien d'autre.
 2. L'installeur n'est pas signé (un certificat de signature, c'est payant), donc Windows SmartScreen peut afficher

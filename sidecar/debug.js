@@ -1,7 +1,7 @@
 'use strict';
 
-// The sidecar's dev routes (127.0.0.1:CAPRI_PORT/debug/<route>), on only with CAPRI_DEBUG=1 For trying the Tauri shell without touching the real
-// pointer or keyboard: her menu as the core has it, a click on an item, the settings window.
+// The sidecar's dev routes (127.0.0.1:CAPRI_PORT/debug/<route>), on only with CAPRI_DEBUG=1. For trying the
+// Tauri shell without touching the real pointer or keyboard: her menu as the core has it, a click on an item, the settings window.
 //   info                                     { pid, rendererReady, features } (the Tauri smoke test)
 //   invoke    { scope, name, args }          a command of her pages through the dispatcher
 //   power     { away } | { event }           her pause, without locking the screen
@@ -26,7 +26,7 @@ function createDebugHandler({ core, platform, seen = {} }) {
       return { ok: true, value: value === undefined ? null : value };
     }
     if (route === 'power') {
-      // her pause without locking anything : { away: true | false } held until
+      // her pause without locking anything: { away: true | false } held until
       // said otherwise, or { event: 'lock-screen' | 'unlock-screen' | 'suspend' | 'resume' }
       if (typeof body.away === 'boolean') core.power()?.test(body.away);
       else if (body.event) core.power()?.emit(String(body.event));
