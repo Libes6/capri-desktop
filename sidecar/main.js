@@ -94,6 +94,8 @@ async function main() {
   }
 
   core.applyRender();
+  // Rust holds the single-instance lock and tells of a second launch: she shows her status, as in the Electron build
+  platform.app.singleInstance(() => core.command('status'));
   platform.app.onQuit(() => core.stop());
   platform.app.installAppMenu();
   core.start({ debug: dev ? createDebugHandler({ core, platform, seen }) : null });

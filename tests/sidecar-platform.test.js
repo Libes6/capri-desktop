@@ -415,3 +415,16 @@ test('the Tauri build offers no display mode: not in her tray menu, not in the s
     fs.rmSync(userData, { recursive: true, force: true });
   }
 });
+
+test('rpc: a multi-megabyte line (a screenshot) fed in small chunks does not stall the loop, and what follows it is still read', async () => {
+  const peer = createPeer({ write: () => {}, log: () => {} });
+  const big = 'x'.repeat(24 * 1024 * 1024);
+  const first = peer.request('a', {});
+  const second = peer.request('b', {});
+  const text = `${JSON.stringify({ jsonrpc: '2.0', id: 1, result: big })}\n${JSON.stringify({ jsonrpc: '2.0', id: 2, result: 'next' })}\n`;
+  const started = Date.now();
+  for (let i = 0; i < text.length; i += 65536) peer.feed(text.slice(i, i + 65536));
+  assert.ok(Date.now() - started < 2500, `fed in ${Date.now() - started} ms`);
+  assert.equal((await first).length, big.length);
+  assert.equal(await second, 'next');
+});

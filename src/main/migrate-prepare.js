@@ -132,7 +132,10 @@ async function prepareTauriMigration({
 
   const wantAutostart = typeof autostart === 'boolean' ? autostart : null;
   const empty = !Object.keys(keys).length && wantAutostart !== true;
-  if (empty && !result.skipped && !encs.length) {
+  // a manifest left by an earlier run that said the login item was on, and it has been turned off since: rewritten, or
+  // the Tauri build would turn on a login item the user no longer wants
+  const staleAutostart = previous?.autostart === true && wantAutostart === false;
+  if (empty && !result.skipped && !encs.length && !staleAutostart) {
     result.ok = true; // nothing to hand over
     return result;
   }

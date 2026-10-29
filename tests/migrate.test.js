@@ -197,6 +197,16 @@ test('prepare: nothing to hand over (no enc: keys, login item off) writes nothin
   assert.deepEqual(kept, [], 'by default Electron\'s login item stays');
 });
 
+test('prepare: a login item turned off since the last hand-over is not handed over as on', async (t) => {
+  const dir = tmp(t);
+  const file = path.join(dir, 'tauri-keys.json');
+  await prepareTauriMigration({ userData: dir, apiKeys: {}, decrypt: electronDecrypt, store: memoryStore(), autostart: true });
+  assert.equal(readJson(file).autostart, true);
+  const off = await prepareTauriMigration({ userData: dir, apiKeys: {}, decrypt: electronDecrypt, store: memoryStore(), autostart: false });
+  assert.equal(off.ok, true);
+  assert.equal(readJson(file).autostart, false);
+});
+
 // ---------- the whole way ----------
 
 test('full scenario: config, memory, sounds, keys and the login item come over; Electron stays as it was', async (t) => {

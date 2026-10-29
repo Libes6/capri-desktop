@@ -24,6 +24,7 @@ class RpcError extends Error {
 function createPeer({ write, onRequest = async () => { throw new RpcError(-32601, 'no handler'); }, onNotification = () => {}, timeoutMs = DEFAULT_TIMEOUT_MS, log = () => {} }) {
   let nextId = 1;
   let buffer = '';
+  let parts = []; // pieces of a line not finished yet
   let closed = null;
   const pending = new Map(); // id -> { resolve, reject, timer, method }
 
@@ -75,8 +76,15 @@ function createPeer({ write, onRequest = async () => { throw new RpcError(-32601
     else waiting.resolve(message.result);
   }
 
+  // A line may be megabytes (a screenshot, base64): the pieces wait in a list and are joined once the line's end
+  // arrives, not searched and flattened again at each chunk.
   function feed(chunk) {
-    buffer += chunk;
+    if (!chunk.includes('\n')) {
+      if (chunk) parts.push(chunk);
+      return;
+    }
+    buffer = parts.length ? parts.join('') + chunk : chunk;
+    parts = [];
     let at;
     while ((at = buffer.indexOf('\n')) >= 0) {
       const line = buffer.slice(0, at).trim();
@@ -91,6 +99,8 @@ function createPeer({ write, onRequest = async () => { throw new RpcError(-32601
       }
       if (message && typeof message === 'object') incoming(message);
     }
+    if (buffer) parts.push(buffer);
+    buffer = '';
   }
 
   function close(reason = 'closed') {
