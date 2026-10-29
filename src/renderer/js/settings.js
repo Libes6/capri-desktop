@@ -117,12 +117,6 @@ function updateText(st) {
   }
 }
 
-// the keys she will enter again (provider names, never a key), or the general sentence
-function bridgeWarningText(w) {
-  const t = view.text;
-  return w?.keys?.length ? t.updBridgeKeys.replaceAll('{keys}', w.keys.join(', ')) : t.updBridgeSome;
-}
-
 function fillUpdate(box, st) {
   const t = view.text;
   const focused = box.contains(document.activeElement) ? document.activeElement.id : null;
@@ -133,15 +127,6 @@ function fillUpdate(box, st) {
   const nodes = [state];
   if (st.version && st.kind !== 'error') nodes.push(el('p', 'settings__hint', `${t.updOffered}: ${st.current} → ${st.version}`));
   if (st.mode === 'notify' && st.version) nodes.push(el('p', 'settings__hint', t.updPackage));
-  // the update that moves her to the Tauri build (TAURI-13), and what could not be carried over for it
-  if (st.bridge && st.version && st.kind !== 'error') nodes.push(el('p', 'settings__hint', t.updBridge));
-  const warning = st.bridgeWarning && bridgeWarningText(st.bridgeWarning);
-  if (warning) {
-    const warn = el('p', 'settings__updateState settings__updateState--error', warning);
-    warn.id = 'update-bridge-warning';
-    warn.setAttribute('role', 'alert');
-    nodes.push(warn);
-  }
   if (st.kind === 'downloading') {
     const bar = el('progress', 'settings__progress');
     bar.id = 'update-progress';
@@ -158,7 +143,7 @@ function fillUpdate(box, st) {
   };
   if (st.kind !== 'disabled') add('update-check', t.updCheck, () => host.updates.check()).disabled = busy;
   if (st.kind === 'available' && st.canDownload) add('update-download', t.updDownload, () => host.updates.download(), 'settings__button settings__button--primary');
-  if (st.kind === 'downloaded') add('update-install', st.bridgeWarning ? t.updBridgeAnyway : t.updInstall, () => confirmUpdate(st.version, st.bridgeWarning), 'settings__button settings__button--primary');
+  if (st.kind === 'downloaded') add('update-install', t.updInstall, () => confirmUpdate(st.version), 'settings__button settings__button--primary');
   if (st.version && (st.mode === 'notify' || st.kind === 'error')) add('update-page', t.updPage, () => host.updates.page());
   if (actions.children.length) nodes.push(actions);
   if (st.notes && st.kind !== 'error') {
@@ -355,7 +340,7 @@ function resetBox() {
 }
 
 // "Update and restart": asked once more, over the window, before main installs and restarts
-function confirmUpdate(version, warning = null) {
+function confirmUpdate(version) {
   const t = view.text;
   document.getElementById('update-confirm-box')?.remove();
   const box = el('div', 'settings__confirm');
@@ -363,7 +348,7 @@ function confirmUpdate(version, warning = null) {
   box.setAttribute('role', 'alertdialog');
   box.setAttribute('aria-modal', 'true');
   box.setAttribute('aria-labelledby', 'update-confirm-title');
-  const heading = el('h2', 'settings__heading', (warning ? t.updBridgeConfirm : t.updConfirm).replaceAll('{version}', version));
+  const heading = el('h2', 'settings__heading', t.updConfirm.replaceAll('{version}', version));
   heading.id = 'update-confirm-title';
   const done = () => {
     box.remove();
@@ -378,7 +363,7 @@ function confirmUpdate(version, warning = null) {
   yes.id = 'update-confirm-yes';
   const actions = el('div', 'settings__actions');
   actions.append(no, yes);
-  box.append(heading, el('p', 'settings__noteText', warning ? bridgeWarningText(warning) : t.updConfirmDetail), actions);
+  box.append(heading, el('p', 'settings__noteText', t.updConfirmDetail), actions);
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();

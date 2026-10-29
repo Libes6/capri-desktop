@@ -8,7 +8,7 @@
 //   node scripts/perf-probe-tauri.js --launch [--bin <capri>] [--states idle,hidden,paused,work,chat] [--secs 45] [--warm 8] [--out f.json]
 // --launch (TAURI-11): starts the built app itself, with a throwaway profile (CAPRI_USER_DATA), its own port and
 // keychain service, drives it through the sidecar's debug routes (CAPRI_DEBUG) and the page through the debug stdin
-// (CAPRI_DEBUG_STDIN), and measures the states of scripts/perf-probe.js (the Electron probe) the same way, plus the
+// (CAPRI_DEBUG_STDIN), and measures the states of docs/PERFORMANCE.md the same way, plus the
 // requestAnimationFrame callbacks and sprite draws per second counted inside the page. Kills only its own pids.
 const fs = require('node:fs');
 const os = require('node:os');
@@ -99,7 +99,7 @@ async function singleWindow() {
   }, null, 1));
 }
 
-// ---------- --launch: the states of the Electron probe ----------
+// ---------- --launch: the states of docs/PERFORMANCE.md ----------
 
 const root = path.resolve(__dirname, '..');
 const targetDir = process.env.CARGO_TARGET_DIR || path.join(root, 'src-tauri', 'target');
@@ -141,7 +141,7 @@ async function launchRun() {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-perf-tauri-'));
   fs.writeFileSync(path.join(data, 'config.json'), JSON.stringify({ welcomed: true, motionAsked: true, motion: 'full', lang: 'en', assistant: 'claude', linked: true, initiative: 'quiet' }));
   const port = await freePort();
-  const env = { ...process.env, CAPRI_USER_DATA: data, CAPRI_PORT: String(port), CAPRI_DEBUG: '1', CAPRI_DEBUG_STDIN: '1', CAPRI_NO_MIGRATE: '1',
+  const env = { ...process.env, CAPRI_USER_DATA: data, CAPRI_PORT: String(port), CAPRI_DEBUG: '1', CAPRI_DEBUG_STDIN: '1',
     CAPRI_KEYCHAIN_SERVICE: `capri.desktop.smoke.perf${process.pid}`, CAPRI_AUTOSTART_FAKE: path.join(data, 'autostart-fake'), CAPRI_ROOT: root, CAPRI_NODE: process.execPath };
   delete env.CAPRI_SIDECAR;
   const child = spawn(BIN, [], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });

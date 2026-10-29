@@ -128,7 +128,7 @@ test('what Rust cannot do yet is answered neutrally and logged once, the core do
   const { seen, platform, core, userData } = await startOnSidecar();
   try {
     core.start();
-    // the key store is not asked until init(): no key store, keys stay plain (as Electron without safeStorage)
+    // the key store is not asked until init(): no key store, keys stay plain 
     assert.equal(platform.secrets.isAvailable(), false);
     // what is still not Rust's (the picture of the overlay, TAURI-11 open question) answers neutrally and is logged once
     assert.equal(await platform.windows.createOverlay({ area: { x: 0, y: 0, width: 10, height: 10 } }).capture({}), null);
@@ -177,7 +177,7 @@ test('secrets: init fetches the master key, keys are sealed as kc: and open agai
   }
 });
 
-test('secrets: no key store means isAvailable false and keys stay plain, as Electron without safeStorage', async () => {
+test('secrets: no key store means isAvailable false and keys stay plain', async () => {
   const { platform, userData, seen } = await startOnSidecar({}, { 'secrets.masterKey': () => ({ available: false, reason: 'no secret service' }), 'app.appForProtocol': () => false });
   try {
     await platform.init();
@@ -193,7 +193,7 @@ test('secrets: no key store means isAvailable false and keys stay plain, as Elec
   }
 });
 
-test('Electron keys (enc:) are opened by the Electron platform only, kc: keys by the Tauri one', () => {
+test('keys sealed by another kind (enc:) are not opened here, kc: keys are', () => {
   const { createKeys } = require('../src/main/setup');
   const { createFakePlatform } = require('../src/main/platform/fake');
   const fake = createFakePlatform();
@@ -314,8 +314,8 @@ test('userSoundUrl: capri://usersounds/ here, http://capri.localhost/ for the Wi
 
 test('the window helper is looked for in the resources folder when the sidecar is told where it is', () => {
   const { helperPath } = require('../src/main/mac/window-watch');
-  assert.equal(helperPath('/$capri/src/main/mac', undefined, { CAPRI_RESOURCES: '/App/Resources' }), path.join('/App/Resources', 'bin', 'capri-windows'));
-  assert.equal(helperPath('/repo/src/main/mac', undefined, {}), path.join('/repo/src/main/mac', 'bin', 'capri-windows'));
+  assert.equal(helperPath('/$capri/src/main/mac', { CAPRI_RESOURCES: '/App/Resources' }), path.join('/App/Resources', 'bin', 'capri-windows'));
+  assert.equal(helperPath('/repo/src/main/mac', {}), path.join('/repo/src/main/mac', 'bin', 'capri-windows'));
 });
 
 test('the demo terminal is Rust\'s window: opened by id, the core\'s destroy is not a "closed", the person\'s close is', async () => {

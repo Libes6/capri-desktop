@@ -3,9 +3,9 @@
 // The one door of her pages into the core (TAURI-02): handle(name, args, sender). It looks the command
 // up in the protocol (src/protocol.js), lets it through only from the window its scope belongs to,
 // checks its arguments against the schema, and calls the core's handler of that channel. A refusal is
-// a ProtocolError (code 'unknown' | 'forbidden' | 'invalid'), never a crash. Electron's IPC comes in
-// by channel (the preload has already packed the arguments in one value: handleChannel), Tauri's
-// bridge by name with the positional arguments (handle). Plain JS, no Electron.
+// a ProtocolError (code 'unknown' | 'forbidden' | 'invalid'), never a crash. A page's call comes in
+// by name with the positional arguments (handle), or by channel with the arguments packed in one value
+// (handleChannel). Plain JS.
 
 const protocol = require('../protocol');
 
@@ -41,7 +41,7 @@ function createDispatcher({ handlers, scopeOf, commands = protocol.COMMANDS }) {
     return fn(payload, sender);
   }
 
-  // By channel, the payload being the one value the handler gets (Electron's IPC).
+  // By channel, the payload being the one value the handler gets .
   function handleChannel(channel, payload, sender) {
     const c = byChannel.get(channel);
     if (!c) throw new ProtocolError('unknown', `unknown channel ${channel}`, channel);

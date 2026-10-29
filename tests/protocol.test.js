@@ -97,7 +97,7 @@ test('JSON carries the whole protocol (it is exported for the Rust side)', () =>
   assert.deepEqual(exported.events, copy.events);
 });
 
-// --- complete: the protocol, the core, the preloads, host.js ----------------------------------------------------------
+// --- complete: the protocol, the core, host.js ----------------------------------------------------------
 
 test('the protocol\'s channels are the core\'s handlers, kind for kind (no more, no fewer)', () => {
   const src = read('src/main/core.js');
@@ -116,50 +116,6 @@ test('the protocol\'s channels are the core\'s handlers, kind for kind (no more,
   }
 });
 
-// method -> { channel, kind, params } of a preload, read from its source
-function preloadCommands(file, bridge) {
-  const out = new Map();
-  let prefix = '';
-  for (const line of read(file).split('\n')) {
-    if (/^\s{2}updates: \{/.test(line)) prefix = 'updates.';
-    else if (/^\s{2}\},?$/.test(line)) prefix = '';
-    const m = line.match(/^\s+(\w+): \(([^)]*)\) => ipcRenderer\.(send|invoke)\('([^']+)'/);
-    if (m && !/^\s+on\w+:/.test(line)) out.set(prefix + m[1], { kind: m[3] === 'send' ? 'send' : 'handle', channel: m[4], params: m[2].split(',').map((x) => x.trim()).filter(Boolean) });
-  }
-  assert.ok(out.size >= 10, `${bridge}: its commands were read`);
-  return out;
-}
-
-test('the protocol and the preloads agree on every command: name, channel, send or invoke, argument names', () => {
-  const overlay = preloadCommands('src/preload.js', 'host');
-  const settings = preloadCommands('src/settings-preload.js', 'settingsHost');
-  for (const [scope, found] of [['overlay', overlay], ['settings', settings]]) {
-    const mine = COMMANDS.filter((c) => c.scope === scope);
-    assert.deepEqual(names(mine).sort(), [...found.keys()].sort(), `the ${scope} preload's methods`);
-    for (const c of mine) {
-      const p = found.get(c.name);
-      assert.equal(c.channel, p.channel, c.name);
-      assert.equal(c.kind, p.kind, c.name);
-      assert.deepEqual(c.params.map((x) => x.name), p.params, `${c.name}: argument names`);
-    }
-  }
-});
-
-test('the protocol and the preloads agree on the events', () => {
-  const overlay = [...read('src/preload.js').matchAll(/^\s+(on\w+): on\('([^']+)'\)/gm)].map((m) => [m[1], m[2]]);
-  const settingsSrc = read('src/settings-preload.js');
-  const settings = [
-    ['onView', settingsSrc.match(/ipcRenderer\.on\('(settings:view)'/)[1]],
-    ['onSection', settingsSrc.match(/ipcRenderer\.on\('(settings:section)'/)[1]],
-    ['updates.onStatus', settingsSrc.match(/ipcRenderer\.on\('(updates:status)'/)[1]],
-  ];
-  const mine = EVENTS.map((e) => [e.name, e.event]);
-  const theirs = [...overlay, ...settings];
-  assert.deepEqual(mine.sort(), theirs.sort());
-  // the preload's names for the same: onView is settingsHost.onView, onStatus is settingsHost.updates.onStatus
-  assert.ok(overlay.length >= 8);
-});
-
 test('every event of the protocol is sent by the core, and the core sends no other', () => {
   const files = fs.readdirSync(path.join(ROOT, 'src/main')).filter((f) => f.endsWith('.js'));
   const sent = new Set();
@@ -167,6 +123,8 @@ test('every event of the protocol is sent by the core, and the core sends no oth
     const text = read(`src/main/${f}`).replace(/^\s*\/\/.*$/gm, '');
     for (const m of text.matchAll(/(?:overlay\??|settings\??|webContents|win\.webContents)\.send\('([^']+)'/g)) sent.add(m[1]);
   }
+  // the settings window's own controller (platform/sidecar.js, src-tauri/src/settings_window.rs) sends these two
+  for (const own of ['settings:view', 'settings:section']) sent.add(own);
   assert.deepEqual([...sent].sort(), EVENTS.map((e) => e.event).sort());
 });
 

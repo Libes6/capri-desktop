@@ -1,17 +1,16 @@
 'use strict';
 
 // The protocol between her pages and the core (TAURI-02): every command the pages send and every event
-// the core sends back, in one place. Plain JS, no Electron, no requires: the Electron shell, the
-// dispatcher (main/dispatch.js), the tests, `npm run protocol:export` (docs/protocol.json, read by the
+// the core sends back, in one place. Plain JS, no requires: the dispatcher (main/dispatch.js), the tests, `npm run protocol:export` (docs/protocol.json, read by the
 // Tauri side) and docs/PROTOCOL.md all come from this file.
 //
 // A command:
-//   name     the command as the page calls it: the method of host.js / the preload (host.invoke(name, args))
-//   channel  the Electron IPC channel, and the core's handler (core.ipc.on / core.ipc.handle) of that name
+//   name     the command as the page calls it: the method of host.js (host.invoke(name, args))
+//   channel  the channel name, and the core's handler (core.ipc.on / core.ipc.handle) of that name
 //   scope    'overlay' (her overlay) or 'settings' (her settings window): the only window that may call it
 //   kind     'send' (fire and forget, the core answers nothing) or 'handle' (the core answers)
 //   params   the positional arguments of the call (what host.invoke gets as `args`)
-//   pack     how they become the one value the core's handler gets, as the preload does it:
+//   pack     how they become the one value the core's handler gets, as host.js does it:
 //            'none' (no value), 'first' (args[0]), 'object' (an object keyed by the params' names)
 //   reply    the shape of the answer ('handle' only); null: whatever the core answers when it has nothing
 //   doc      what it is for
@@ -22,7 +21,7 @@
 //   required  default false for a property, true for a param (a param with `optional: true` may be left out)
 //   enum      the only values; max: a string's length or an array's size; min/max for a number too
 //   int       a whole number; props: an object's known properties (others are let through); items: an array's
-//   coerce    'boolean': whatever is given becomes true/false, as the preload does (Boolean(on)); 'true-only':
+//   coerce    'boolean': whatever is given becomes true/false, as host.js does (Boolean(on)); 'true-only':
 //             only `true` counts
 //   nullable  null is let through; reply schemas are for the docs and the other side, never checked
 
@@ -43,7 +42,7 @@ const handle = (name, channel, scope, options) => command(name, channel, scope, 
 const O = 'overlay';
 const S = 'settings';
 
-// --- her overlay (preload.js, window.host) -------------------------------------------------------------
+// --- her overlay (host) -------------------------------------------------------------
 
 const OVERLAY_COMMANDS = [
   send('rendererReady', 'renderer:ready', O, { doc: 'The overlay page is up (a reload too): the core sends the power state.' }),
@@ -151,7 +150,7 @@ const OVERLAY_COMMANDS = [
   send('focusOverlay', 'overlay:focus', O, { params: [param('on', bool, 'true: the overlay takes the keyboard (the chat); false: gives it back')], doc: 'The overlay takes the keyboard while the chat is open.' }),
 ];
 
-// --- her settings window (settings-preload.js, window.settingsHost) --------------------------------------
+// --- her settings window (settingsHost) --------------------------------------
 
 const SETTINGS_COMMANDS = [
   handle('view', 'settings:view', S, { reply: obj({ title: { type: 'string' }, sections: { type: 'array' } }, { nullable: true }), doc: 'What the window shows (settings-view.js).' }),
@@ -276,7 +275,7 @@ function packArgs(command, args) {
   return { ok: true, payload: Object.fromEntries(command.params.map((p, i) => [p.name, values[i]])) };
 }
 
-// The one value a channel carries (Electron's IPC: the preload has already packed it) against the same params.
+// The one value a channel carries (already packed in one value) against the same params.
 function checkPayload(command, payload) {
   if (command.pack === 'none') return { ok: true, payload: undefined };
   if (command.pack === 'first') {

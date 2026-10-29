@@ -207,7 +207,6 @@ function sidecarPlatform(updater = { mode: 'install', reason: null, test: false 
 
 test('sidecar platform: updater calls go to Rust as notifications and settle on their results', async () => {
   const { platform, sent } = sidecarPlatform();
-  assert.equal(platform.updater.transport, 'tauri');
   const { tauri } = platform.updater.get();
   assert.deepEqual(tauri.status, { mode: 'install', reason: null, test: false });
 

@@ -38,7 +38,7 @@ test('systemLanguages asks the system where it keeps the list and never throws',
   assert.deepEqual(await systemLanguages({ platform: 'darwin', run: async () => { throw new Error('no'); } }), []);
 });
 
-test('the list decides her language as in Electron: a Russian Mac gets Russian even without LANG', async () => {
+test('the list decides her language: a Russian Mac gets Russian even without LANG', async () => {
   const preferred = await systemLanguages({ platform: 'darwin', run: async () => '("ru-RU", "en-RU")' });
   assert.equal(lang.resolveLang('auto', { preferred, fallback: ['en-US'] }, ['ru', 'en', 'fr', 'es', 'pt']), 'ru');
 });

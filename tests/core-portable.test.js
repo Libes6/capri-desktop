@@ -1,7 +1,6 @@
 'use strict';
-// TAURI-01: the core of Capri runs without Electron. No core file imports it (the source is read),
-// the platforms (Electron's and the fake) have the same methods, and the core starts and answers
-// its commands in a plain `node` that refuses to load Electron at all.
+// TAURI-01: the core of Capri is plain node, whatever shell it runs under. It loads in a process that refuses
+// `electron`, the fake platform has every method of the interface, and the core starts and answers its commands.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -11,45 +10,12 @@ const { spawnSync } = require('node:child_process');
 const { missing, SHAPE, OVERLAY_API, TRAY_API } = require('../src/main/platform');
 const { TRAY } = require('../src/main/labels');
 const { createFakePlatform } = require('../src/main/platform/fake');
-const { createElectronPlatform } = require('../src/main/platform/electron');
 
 const MAIN = path.resolve(__dirname, '../src/main');
-// the only file that may import Electron (or its updater): the platform's hands
-const WHITELIST = new Set([path.join(MAIN, 'platform', 'electron.js')]);
-// the Electron shell: starts the app, wires the IPC, drives Electron's windows through platform.native
-const SHELL = (file) => file === path.join(MAIN, 'main.js') || file.startsWith(path.join(MAIN, 'shell') + path.sep);
-
-function sources(dir = MAIN) {
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) return e.name === 'bin' ? [] : sources(full);
-    return e.name.endsWith('.js') ? [full] : [];
-  });
-}
-
-test('no file of the core imports electron (only platform/electron.js does)', () => {
-  const files = sources();
-  assert.ok(files.length > 20, 'the sources were found');
-  const importing = /require\(\s*['"]electron(-updater)?(\/[^'"]*)?['"]\s*\)|from\s+['"]electron(-updater)?['"]|import\(\s*['"]electron/;
-  for (const file of files) {
-    if (WHITELIST.has(file)) continue;
-    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), importing, `${path.relative(MAIN, file)} imports electron`);
-  }
-  // the whitelist is not a dead letter: the Electron platform does import it
-  assert.match(fs.readFileSync([...WHITELIST][0], 'utf8'), importing);
-});
-
-test('the core never reaches for platform.native (Electron\'s own objects): only the shell does', () => {
-  for (const file of sources()) {
-    if (WHITELIST.has(file) || SHELL(file)) continue;
-    assert.doesNotMatch(fs.readFileSync(file, 'utf8').replace(/^\s*\/\/.*$/gm, ''), /\.native\b/, `${path.relative(MAIN, file)} uses platform.native`);
-  }
-});
-
 test('the modules that were Electron-bound are plain node now', () => {
   // each loads in a process that refuses `electron`, with nothing but node's own modules
   const modules = ['config', 'labels', 'lang', 'capabilities', 'settings-patch', 'settings-view', 'llm', 'ollama', 'setup', 'files',
-    'apps', 'launch', 'bridge', 'assistants', 'linux/x11', 'linux/x11-watch', 'mac/window-watch', 'mac-update', 'power', 'updates',
+    'apps', 'launch', 'bridge', 'assistants', 'linux/x11', 'linux/x11-watch', 'mac/window-watch', 'power', 'updates',
     'windows', 'tray-menu', 'core', 'settings-window'];
   const script = `
     const Module = require('node:module');
@@ -66,10 +32,7 @@ test('the modules that were Electron-bound are plain node now', () => {
   assert.match(run.stdout, new RegExp(`loaded ${modules.length}`));
 });
 
-test('the Electron platform and the fake one have every method of the interface', () => {
-  const noop = () => {};
-  const electron = { protocol: { registerSchemesAsPrivileged: noop }, app: { commandLine: { appendSwitch: noop } } };
-  assert.deepEqual(missing(createElectronPlatform({ electron, root: '/capri' })), []);
+test('the fake platform has every method of the interface', () => {
   assert.deepEqual(missing(createFakePlatform()), []);
   assert.ok(missing({}).length > 20 && missing({}).includes('paths.get'));
   // what the handles of a window and of the tray are
@@ -79,40 +42,6 @@ test('the Electron platform and the fake one have every method of the interface'
   const tray = fake.tray.create({ onClick() {} });
   for (const method of TRAY_API) assert.equal(typeof tray[method], 'function', `tray.${method}`);
   assert.ok(Object.keys(SHAPE).length >= 15);
-});
-
-test('the Electron platform wraps the calls it is given (a stand-in Electron)', async () => {
-  const noop = () => {};
-  const log = [];
-  const electron = {
-    protocol: { registerSchemesAsPrivileged: noop },
-    app: {
-      commandLine: { appendSwitch: noop }, getPath: (n) => `/p/${n}`, getAppPath: () => '/app.asar', isPackaged: true,
-      getVersion: () => '1.2.3', getPreferredSystemLanguages: () => ['fr-FR'], getSystemLocale: () => 'fr-FR', getLocale: () => 'fr',
-      getLoginItemSettings: (o) => { log.push(['get', o]); return { openAtLogin: true }; },
-      setLoginItemSettings: (o) => log.push(['set', o]),
-    },
-    screen: { getAllDisplays: () => [{ id: 7 }], screenToDipRect: (w, r) => ({ w, ...r }) },
-    safeStorage: { isEncryptionAvailable: () => true, encryptString: (s) => Buffer.from(`~${s}`), decryptString: (b) => b.toString().slice(1) },
-    shell: { openPath: async (f) => { log.push(['open', f]); return ''; } },
-  };
-  const platform = createElectronPlatform({ electron, root: '/capri' });
-  assert.equal(platform.paths.get('userData'), '/p/userData');
-  assert.equal(platform.paths.get('appPath'), '/app.asar');
-  assert.equal(platform.app.version(), '1.2.3');
-  assert.deepEqual(platform.app.languages(), { preferred: ['fr-FR'], fallback: ['fr-FR', 'fr'] });
-  assert.deepEqual(platform.screens.all(), [{ id: 7 }]);
-  assert.deepEqual(platform.screens.toDip({ x: 1 }), { w: null, x: 1 });
-  assert.equal(platform.secrets.decrypt(platform.secrets.encrypt('key')), 'key');
-  // installed: the login item is the app itself; from a clone, electron with the project as argument
-  assert.equal(platform.autostart.isEnabled(), true);
-  platform.autostart.set(false);
-  assert.deepEqual(log, [['get', {}], ['set', { openAtLogin: false }]]);
-  electron.app.isPackaged = false;
-  platform.autostart.set(true);
-  assert.deepEqual(log.at(-1), ['set', { path: process.execPath, args: ['/capri'], openAtLogin: true }]);
-  await platform.shell.openPath('/x');
-  assert.deepEqual(log.at(-1), ['open', '/x']);
 });
 
 // ---- the core, started on the fake platform ----

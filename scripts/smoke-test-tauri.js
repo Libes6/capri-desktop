@@ -128,7 +128,6 @@ async function main() {
     CAPRI_PORT: String(port),
     CAPRI_DEBUG: '1',
     CAPRI_DEBUG_STDIN: '1',
-    CAPRI_NO_MIGRATE: '1',
     CAPRI_KEYCHAIN_SERVICE: `${IDENTIFIER}.${process.pid}`,
     CAPRI_AUTOSTART_FAKE: path.join(data, 'autostart-fake'),
     CAPRI_ROOT: root,

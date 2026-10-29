@@ -255,7 +255,7 @@ test('settings window: one at a time, opened by Rust, centered in the work area,
   }
 });
 
-test('settings window: the bounds are the Electron window\'s (720x540, centered, never bigger than the work area)', () => {
+test('settings window: the bounds are 720x540, centered, never bigger than the work area)', () => {
   assert.deepEqual(settingsBounds(null), { width: 720, height: 540 });
   assert.deepEqual(settingsBounds({ x: 0, y: 0, width: 1000, height: 700 }), { x: 140, y: 80, width: 720, height: 540 });
   assert.deepEqual(settingsBounds({ x: 10, y: 20, width: 600, height: 400 }), { x: 10, y: 20, width: 600, height: 400 });

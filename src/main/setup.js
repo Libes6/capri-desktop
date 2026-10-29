@@ -131,10 +131,9 @@ function launchThroughOllama(integration) {
 }
 
 // API keys are kept encrypted in config.json, with your account (the platform's secrets: DPAPI on
-// Windows, the Keychain on macOS…): "<prefix>:<base64>". The prefix is the platform's own: "enc" for
-// Electron's safeStorage, "kc" for the Tauri build's key store (platform.secrets.prefix). A key sealed
-// by the other kind cannot be opened here: it reads as empty (to be entered again, or migrated by
-// TAURI-09), and is never taken for a plain key.
+// Windows, the Keychain on macOS…): "<prefix>:<base64>". The prefix is the platform's own ("kc" for
+// the Tauri build's key store, platform.secrets.prefix). A key sealed by another kind ("enc:", from an
+// older build) cannot be opened here: it reads as empty (to be entered again), and is never taken for a plain key.
 const SEALED = /^(enc|kc):/;
 function createKeys({ platform }) {
   const prefix = platform.secrets.prefix || 'enc';

@@ -4,13 +4,10 @@
   "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
   "author": "mochiiwuff",
   "repository": "github:Libes6/capri-desktop",
-  "main": "src/main/main.js",
   "private": true,
   "scripts": {
-    "prestart": "node scripts/build-mac-helper.js",
-    "start": "electron .",
-    "predev": "node scripts/build-mac-helper.js",
-    "dev": "electron . --dev",
+    "start": "node scripts/tauri.js dev",
+    "dev": "node scripts/tauri.js dev",
     "build:mac-helper": "node scripts/build-mac-helper.js --required",
     "demo": "node scripts/demo.js",
     "hooks:install": "node scripts/install-hooks.js",
@@ -22,17 +19,11 @@
     "check:webkit": "node tools/webkit-check/run.js",
     "check:llm": "node scripts/check-llm.js",
     "test:hooks": "node --test tests/hooks.test.js",
-    "dist": "electron-builder --publish never",
     "test": "node --test tests/*.test.js",
     "protocol:export": "node scripts/export-protocol.js",
-    "test:smoke": "node scripts/smoke-test.js",
-    "test:smoke:tauri": "node scripts/smoke-test-tauri.js",
-    "updater:smoke": "node scripts/updater-smoke.js",
+    "test:smoke": "node scripts/smoke-test-tauri.js",
     "tauri:updater-smoke": "node scripts/updater-smoke-tauri.js",
     "tauri:release-manifest": "node scripts/release-manifest.js",
-    "dist:win": "electron-builder --win --x64 --publish never",
-    "dist:linux": "electron-builder --linux --x64 --publish never",
-    "dist:mac": "electron-builder --mac --arm64 --publish never",
     "tauri:stage": "node scripts/stage-frontend.js",
     "tauri:sidecar": "node scripts/build-sidecar.js",
     "tauri:dev": "node scripts/tauri.js dev",
@@ -46,149 +37,16 @@
   "keywords": [
     "claude-code",
     "desktop-pet",
-    "electron",
     "cyberpunk",
-    "edgerunners"
+    "edgerunners",
+    "tauri"
   ],
   "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
     "node": ">=22.12.0"
   },
-  "devDependencies": {
-    "electron": "^44.9.3",
-    "electron-builder": "^26.18.0"
-  },
   "dependencies": {
     "@fontsource/chakra-petch": "^5.3.0",
-    "@fontsource/jetbrains-mono": "^5.3.0",
-    "electron-updater": "^6.6.2"
-  },
-  "build": {
-    "appId": "capri.desktop",
-    "productName": "Capri",
-    "files": [
-      "src/**",
-      "assets/**",
-      "hooks/**",
-      "scripts/**",
-      "package.json",
-      "LICENSE",
-      "!src/main/mac/*.swift",
-      "!src/main/mac/bin/**",
-      "!scripts/before-pack.js",
-      "!scripts/build-mac-helper.js",
-      "!scripts/updater-smoke.js",
-      "!scripts/tauri.js",
-      "!scripts/build-sidecar.js",
-      "!scripts/stage-frontend.js",
-      "!scripts/package-tauri.js",
-      "!scripts/package-smoke.js",
-      "!scripts/release-tauri.js",
-      "!scripts/release-manifest.js",
-      "!scripts/verify-signatures.js",
-      "!scripts/updater-config.js",
-      "!scripts/perf-probe-tauri.js",
-      "!scripts/updater-smoke-tauri.js",
-      "!scripts/smoke-test-tauri.js",
-      "!scripts/draft-release.js",
-      "!scripts/bridge-feed.js",
-      "!scripts/export-protocol.js",
-      "!scripts/mac-window-probe.js",
-      "!scripts/mac-window-scenario.js",
-      "!scripts/perf-probe.js",
-      "!scripts/smoke-test.js",
-      "!scripts/x11-probe.js"
-    ],
-    "asarUnpack": [
-      "hooks/**",
-      "src/main/windows.ps1"
-    ],
-    "beforePack": "scripts/before-pack.js",
-    "win": {
-      "target": "nsis",
-      "icon": "assets/icons/capri.ico"
-    },
-    "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "runAfterFinish": true,
-      "createDesktopShortcut": true,
-      "shortcutName": "Capri"
-    },
-    "artifactName": "Capri-${version}-${os}-${arch}.${ext}",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Libes6",
-        "repo": "capri-desktop",
-        "releaseType": "release"
-      }
-    ],
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64"
-          ]
-        }
-      ],
-      "category": "public.app-category.entertainment",
-      "icon": "assets/icons/capri-mac.png",
-      "extraResources": [
-        {
-          "from": "src/main/mac/bin/capri-windows",
-          "to": "bin/capri-windows"
-        }
-      ],
-      "hardenedRuntime": true,
-      "extendInfo": {
-        "NSScreenCaptureUsageDescription": "Capri captures your screen only when you request screen analysis or a screenshot."
-      }
-    },
-    "linux": {
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "category": "Game",
-      "icon": "assets/icons/capri.png",
-      "maintainer": "Libes6 <Libes6@users.noreply.github.com>",
-      "desktop": {
-        "entry": {
-          "StartupWMClass": "capri-desktop"
-        }
-      }
-    },
-    "deb": {
-      "depends": [
-        "libgtk-3-0",
-        "libnotify4",
-        "libnss3",
-        "libxss1",
-        "libxtst6",
-        "xdg-utils",
-        "libatspi2.0-0",
-        "libuuid1",
-        "libsecret-1-0",
-        "x11-utils"
-      ]
-    }
+    "@fontsource/jetbrains-mono": "^5.3.0"
   }
 }

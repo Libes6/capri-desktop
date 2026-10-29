@@ -48,8 +48,7 @@ function configure(uninstall = false) {
     });
     if (!settings.hooks[event].length) delete settings.hooks[event];
   }
-  const script = path.resolve(__dirname, '..', 'hooks', MARK)
-    .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`).replace(/\\/g, '/');
+  const script = path.resolve(__dirname, '..', 'hooks', MARK).replace(/\\/g, '/');
   const command = hooksCommand.hookCommand('codex', { legacy: () => `node "${script}"` });
   if (!uninstall) {
     for (const event of EVENTS) {
@@ -67,17 +66,7 @@ function configure(uninstall = false) {
   return { file, command };
 }
 
-// Rewrite old Electron/Node entries to the capri-hook binary (no-op without the binary).
-const migrate = (bin) => hooksCommand.migrateFile(settingsPath(), 'codex', bin);
-
-// The way back to the Electron/Node build: `capri-hook` entries become the Node command.
-function revert() {
-  const script = path.resolve(__dirname, '..', 'hooks', MARK)
-    .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`).replace(/\\/g, '/');
-  return hooksCommand.revertFile(settingsPath(), 'codex', () => `node "${script}"`);
-}
-
-module.exports = { configure, EVENTS, status, migrate, revert, install: () => configure(), uninstall: () => configure(true) };
+module.exports = { configure, EVENTS, status, install: () => configure(), uninstall: () => configure(true) };
 if (require.main === module) {
   try {
     const uninstall = process.argv.includes('--uninstall');

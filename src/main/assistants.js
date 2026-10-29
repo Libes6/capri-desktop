@@ -28,15 +28,4 @@ function assistant(preference) {
   return { id, ...ASSISTANTS[id] };
 }
 
-// Replace old Electron/Node hook entries of every assistant with the capri-hook binary command.
-// Only edits files that already hold Capri's own entries; without the binary it does nothing.
-function migrateHooks(bin) {
-  return Object.fromEntries(Object.entries(ASSISTANTS).map(([id, a]) => [id, a.hooks.migrate(bin)]));
-}
-
-// The way back (to the Electron build): `capri-hook` commands become the Node/Electron ones of the build that runs this.
-function revertHooks() {
-  return Object.fromEntries(Object.entries(ASSISTANTS).map(([id, a]) => [id, a.hooks.revert()]));
-}
-
-module.exports = { ASSISTANTS, assistant, resolveAssistant, migrateHooks, revertHooks };
+module.exports = { ASSISTANTS, assistant, resolveAssistant };

@@ -15,9 +15,8 @@
 
 1. `window.__CAPRI_HOST__` (`{ overlay: {invoke,on}, settings: {invoke,on} }` или просто `{invoke,on}`) — сюда встанет Tauri-мост из TAURI-04 и фейковый host проверки.
 2. `window.__TAURI__.core` — общий мост: одна Rust-команда `host_invoke { scope, name, args }`, события `capri://<event>`. **Это заготовка: Rust-стороны ещё нет, не проверялась.**
-3. Electron: `window.host` / `window.settingsHost` из preload, вызов по имени метода. Preload, каналы и main не менялись.
 
-Тест-страж `tests/host-guard.test.js`: вне `host.js` в `src/renderer` нет `window.host`, `settingsHost`, `capriSettings`, `__CAPRI_HOST__`, `__TAURI__`, `ipcRenderer`, `require('electron')`; `app.js` и `settings.js` импортируют `host.js`; все методы preload есть в `host`, а `invoke`/`on` доходят до подставленной реализации.
+Тест-страж `tests/host-guard.test.js`: вне `host.js` в `src/renderer` нет `window.host`, `settingsHost`, `capriSettings`, `__CAPRI_HOST__`, `__TAURI__`, `ipcRenderer`, ; `app.js` и `settings.js` импортируют `host.js`; все методы preload есть в `host`, а `invoke`/`on` доходят до подставленной реализации.
 
 ## Проверка в WebKit
 

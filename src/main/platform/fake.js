@@ -9,7 +9,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
-const { createSettingsWindow } = require('../settings-window');
+const { settingsBounds } = require('../settings-window');
 
 function createFakePlatform({ userData, overrides = {}, display } = {}) {
   const calls = [];
@@ -29,7 +29,7 @@ function createFakePlatform({ userData, overrides = {}, display } = {}) {
     capture: null, // a Buffer the next screen capture gives (null: no picture)
     folder: null, // what the folder picker returns
     singleInstance: true,
-    updater: null, // what updater.get() gives
+    updater: { tauri: { status: { mode: 'disabled', reason: 'dev' } } }, // what updater.get() gives (a dev run: updates off)
   };
   const primary = display || { id: 1, scaleFactor: 1, bounds: { x: 0, y: 0, width: 1280, height: 800 }, workArea: { x: 0, y: 0, width: 1280, height: 760 }, size: { width: 1280, height: 800 } };
   state.displays = [primary];
@@ -87,7 +87,6 @@ function createFakePlatform({ userData, overrides = {}, display } = {}) {
       userSoundUrl: (file) => `capri://usersounds/${encodeURIComponent(file)}`,
       setRenderMode: (mode) => note('app.setRenderMode', [mode]),
       gpuStatus: () => ({}),
-      serveAssets: (opts) => note('app.serveAssets', [opts]),
     },
 
     autostart: {
@@ -173,18 +172,28 @@ function createFakePlatform({ userData, overrides = {}, display } = {}) {
         onReady();
         return overlay;
       },
+      // one window at a time, as the real controller (platform/sidecar.js): its page is `window().webContents`
       createSettings: ({ view, area }) => {
         note('windows.createSettings', []);
-        // the real controller over a stand-in BrowserWindow that never opens
-        class Window {
-          constructor() { this.destroyed = false; this.webContents = { send: (c, d) => sent.push({ channel: c, payload: d, to: 'settings' }), setWindowOpenHandler() {}, on() {}, isDestroyed: () => false }; }
-          isDestroyed() { return this.destroyed; }
-          isMinimized() { return false; }
-          restore() {} show() {} focus() {} setTitle() {} removeMenu() {} loadURL() {} close() { this.destroyed = true; this.closed?.(); }
-          once(event, fn) { if (event === 'ready-to-show') fn(); }
-          on(event, fn) { if (event === 'closed') this.closed = fn; }
-        }
-        settingsCtl = createSettingsWindow({ BrowserWindow: Window, preload: '', url: 'about:blank', view, area });
+        let win = null;
+        const send = (channel, payload) => { if (win) sent.push({ channel, payload, to: 'settings' }); };
+        settingsCtl = {
+          open: (section) => {
+            if (!win) win = { webContents: { id: 'settings-page' }, bounds: settingsBounds(area?.()), title: view().title };
+            if (section) send('settings:section', section);
+            return win;
+          },
+          close: () => { win = null; },
+          update: () => {
+            if (!win) return;
+            win.title = view().title;
+            send('settings:view', view());
+          },
+          send,
+          isOpen: () => Boolean(win),
+          window: () => win,
+          owns: (sender) => Boolean(win) && sender === win.webContents,
+        };
         return settingsCtl;
       },
       createDemoTerminal: (opts) => {
@@ -206,7 +215,6 @@ function createFakePlatform({ userData, overrides = {}, display } = {}) {
       },
     },
 
-    native: null,
   };
 
   for (const [section, value] of Object.entries(overrides)) {

@@ -162,7 +162,7 @@ function buildSnapshot({ root, infos, rects, self = {} }) {
   };
 }
 
-// X11 pixels -> Electron's DIPs. Chromium on X11 scales the whole X screen by the display's factor;
+// X11 pixels -> DIPs. The toolkit on X11 scales the whole X screen by the display's factor;
 // each display's DIP bounds times its scaleFactor are its pixels. The display holding the rect's
 // centre (or the first one) converts it.
 function pxToDip(rect, displays) {
@@ -187,7 +187,7 @@ function pxToDip(rect, displays) {
   };
 }
 
-// The overlay's X window id, from Electron's native handle (an XID in an unsigned long).
+// The overlay's X window id, from the window's native handle (an XID in an unsigned long).
 function selfXid(handle) {
   if (!handle || !handle.length) return null;
   const n = handle.length >= 8 ? Number(handle.readBigUInt64LE(0)) : handle.readUInt32LE(0);

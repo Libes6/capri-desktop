@@ -42,7 +42,7 @@ test('the staged frontend holds every file her pages name (images, fonts, script
   }
 });
 
-test('the sidecar bundle takes only node builtins and the repository\'s own files, and not Electron', () => {
+test('the sidecar bundle takes only node builtins and the repository\'s own files, and no electron', () => {
   const { source, modules } = bundle();
   assert.ok(modules.includes('src/main/core.js') && modules.includes('src/main/platform/sidecar.js') && modules.includes('src/protocol.js'));
   assert.ok(!modules.some((m) => /platform\/electron\.js$/.test(m)), 'the Electron platform is not in it');

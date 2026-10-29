@@ -34,24 +34,10 @@ function settingsPath() {
   return path.join(base, 'settings.json');
 }
 
-function hasNode() {
-  try {
-    return spawnSync('node', ['-v'], { windowsHide: true, timeout: 3000 }).status === 0;
-  } catch {
-    return false;
-  }
-}
-
-// Without the capri-hook binary (the Electron build), the JS hook runs under node.
-// In the installed app (the .exe) the hook sits next to the app archive (asarUnpack), where
-// node can read it. With no node on the machine, Capri's own executable runs it as node.
+// Without the capri-hook binary (running from a clone), the JS hook runs under plain node.
+// The Tauri package uses the capri-hook binary instead (src/main/hooks-command.js).
 function legacyCommand() {
-  const script = path.resolve(__dirname, '..', 'hooks', 'capri-hook.js')
-    .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
-    .replace(/\\/g, '/');
-  if (process.versions.electron && !hasNode()) {
-    return `ELECTRON_RUN_AS_NODE=1 "${process.execPath.replace(/\\/g, '/')}" "${script}"`;
-  }
+  const script = path.resolve(__dirname, '..', 'hooks', 'capri-hook.js').replace(/\\/g, '/');
   return `node "${script}"`;
 }
 
@@ -137,25 +123,12 @@ function status() {
   }
 }
 
-// Rewrite old Electron/Node entries to the capri-hook binary (no-op without the binary).
-function migrate(bin) {
-  return hooksCommand.migrateFile(settingsPath(), 'claude', bin);
-}
-
-// The way back to the Electron build: `capri-hook` entries become this build's Node/Electron command.
-function revert() {
-  return hooksCommand.revertFile(settingsPath(), 'claude', () => legacyCommand());
-}
-
-module.exports = { install, uninstall, status, migrate, revert, EVENTS };
+module.exports = { install, uninstall, status, EVENTS };
 
 if (require.main === module) {
   const arg = process.argv[2];
   try {
-    if (arg === '--revert') {
-      const r = revert();
-      console.log(r.reverted ? `${r.reverted} Capri hook commands put back to the Node/Electron form in ${r.file}` : `Nothing to put back in ${r.file}`);
-    } else if (arg === '--uninstall') {
+    if (arg === '--uninstall') {
       const r = uninstall();
       console.log(r.removed ? `Capri hooks removed from ${r.file}` : `No Capri hooks found in ${r.file}`);
     } else if (arg === '--status') {

@@ -9,7 +9,6 @@ const hc = require('../src/main/hooks-command');
 const claude = require('../scripts/install-hooks');
 const codex = require('../scripts/install-codex-hooks');
 const agy = require('../scripts/install-hooks-agy');
-const { migrateHooks } = require('../src/main/assistants');
 
 // Only temporary profiles: the real ~/.claude, ~/.codex and ~/.gemini are never read or written.
 function sandbox(t, { bin = true, binDir } = {}) {
@@ -45,18 +44,16 @@ const OLD_ELECTRON = 'ELECTRON_RUN_AS_NODE=1 "/Applications/Capri.app/Contents/M
 const OLD_NODE = 'node "/old/place/hooks/capri-codex-hook.js"';
 const OLD_AGY = (type) => `ELECTRON_RUN_AS_NODE=1 "C:/Program Files/Capri/Capri.exe" "C:/Program Files/Capri/resources/app.asar.unpacked/hooks/capri-agy-hook.js" ${type}`;
 
-test('without the binary the commands are the previous Electron/Node ones', (t) => {
+test('without the binary the commands are `node <hook.js>`', (t) => {
   const s = sandbox(t, { bin: false });
   assert.equal(hc.findHookBin({ env: {}, resourcesPath: undefined }), null);
   claude.install(); codex.install(); agy.install();
   for (const file of [s.claudeFile, s.codexFile, s.agyFile]) {
     for (const c of commands(read(file))) {
-      assert.match(c, /node |ELECTRON_RUN_AS_NODE/);
+      assert.match(c, /^node /);
       assert.match(c, /capri-(codex-|agy-)?hook\.js/);
     }
   }
-  assert.equal(claude.migrate().migrated, 0); // nothing to migrate to
-  assert.equal(migrateHooks().claude.migrated, 0);
 });
 
 test('the binary is found by env, and in the resources directory of a packaged app', (t) => {
@@ -100,73 +97,6 @@ test('fresh install with the binary writes the binary command for all three assi
   assert.equal(claude.status().installed, false);
   assert.equal(codex.status().installed, false);
   assert.equal(agy.status().installed, false);
-});
-
-test('migrate replaces old Electron/Node entries, keeps the user\'s hooks, and is idempotent', (t) => {
-  const s = sandbox(t);
-  const mine = { type: 'command', command: 'echo mine && capri-hook-notes' };
-  fs.mkdirSync(path.dirname(s.claudeFile), { recursive: true });
-  fs.mkdirSync(path.dirname(s.codexFile), { recursive: true });
-  fs.mkdirSync(path.dirname(s.agyFile), { recursive: true });
-  const claudeOld = { theme: 'dark', hooks: {
-    Stop: [{ hooks: [mine] }, { hooks: [{ type: 'command', command: OLD_ELECTRON, async: true, timeout: 10 }] }],
-    SessionStart: [{ hooks: [{ type: 'command', command: OLD_NODE.replace('codex-', '') }] }],
-  } };
-  const codexOld = { hooks: { Stop: [{ hooks: [mine, { type: 'command', command: OLD_NODE, timeout: 3 }] }] } };
-  const agyOld = { other: { keep: true }, 'capri-agy': { enabled: true,
-    PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: OLD_AGY('PreToolUse'), timeout: 5 }] }],
-    Stop: [{ type: 'command', command: OLD_AGY('Stop'), timeout: 5 }] } };
-  fs.writeFileSync(s.claudeFile, JSON.stringify(claudeOld));
-  fs.writeFileSync(s.codexFile, JSON.stringify(codexOld));
-  fs.writeFileSync(s.agyFile, JSON.stringify(agyOld));
-
-  const first = migrateHooks();
-  assert.deepEqual([first.claude.migrated, first.codex.migrated, first.agy.migrated], [2, 1, 2]);
-
-  const c = read(s.claudeFile);
-  assert.equal(c.theme, 'dark');
-  assert.deepEqual(c.hooks.Stop[0].hooks[0], mine);
-  assert.deepEqual(c.hooks.Stop[1].hooks[0], { type: 'command', command: hc.binCommand('claude', undefined, s.binPath), async: true, timeout: 10 });
-  assert.equal(c.hooks.SessionStart[0].hooks[0].command, hc.binCommand('claude', undefined, s.binPath));
-  const x = read(s.codexFile);
-  assert.deepEqual(x.hooks.Stop[0].hooks, [mine, { type: 'command', command: hc.binCommand('codex', undefined, s.binPath), timeout: 3 }]);
-  const g = read(s.agyFile);
-  assert.deepEqual(g.other, { keep: true });
-  assert.equal(g['capri-agy'].PreToolUse[0].hooks[0].command, hc.binCommand('agy', 'PreToolUse', s.binPath));
-  assert.equal(g['capri-agy'].Stop[0].command, hc.binCommand('agy', 'Stop', s.binPath));
-  for (const f of [s.claudeFile, s.codexFile, s.agyFile]) {
-    assert.ok(!JSON.stringify(read(f)).includes('ELECTRON_RUN_AS_NODE'));
-    assert.equal(fs.readdirSync(path.dirname(f)).filter((n) => n.includes('.capri-backup-')).length, 1);
-  }
-
-  // second run changes nothing and makes no new backup
-  const before = [s.claudeFile, s.codexFile, s.agyFile].map((f) => fs.readFileSync(f, 'utf8'));
-  const second = migrateHooks();
-  assert.deepEqual([second.claude.migrated, second.codex.migrated, second.agy.migrated], [0, 0, 0]);
-  assert.deepEqual([s.claudeFile, s.codexFile, s.agyFile].map((f) => fs.readFileSync(f, 'utf8')), before);
-  for (const f of [s.claudeFile, s.codexFile, s.agyFile]) {
-    assert.equal(fs.readdirSync(path.dirname(f)).filter((n) => n.includes('.capri-backup-')).length, 1);
-  }
-  // status still sees them
-  assert.equal(claude.status().installed, true);
-  assert.equal(codex.status().events.length, 1);
-  assert.equal(agy.status().installed, true);
-});
-
-test('migrate follows a moved binary and leaves broken or missing files alone', (t) => {
-  const s = sandbox(t);
-  claude.install();
-  const moved = path.join(s.dir, 'moved', hc.BIN_NAME);
-  fs.mkdirSync(path.dirname(moved), { recursive: true });
-  fs.writeFileSync(moved, '');
-  assert.equal(claude.migrate(moved).migrated, 12);
-  assert.deepEqual([...new Set(commands(read(s.claudeFile)))], [hc.binCommand('claude', undefined, moved)]);
-  fs.mkdirSync(path.dirname(s.codexFile), { recursive: true });
-  fs.writeFileSync(s.codexFile, '{broken');
-  assert.equal(codex.migrate().migrated, 0);
-  assert.equal(fs.readFileSync(s.codexFile, 'utf8'), '{broken');
-  assert.equal(agy.migrate().migrated, 0); // no file at all
-  assert.equal(fs.existsSync(s.agyFile), false);
 });
 
 test('installing over old entries swaps them for the binary command without duplicates', (t) => {

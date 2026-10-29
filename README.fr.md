@@ -302,13 +302,13 @@ s'endort. Tu peux juste la laisser là.
 
 ### Depuis le code (macOS, Linux, développeurs)
 
-Il faut [Node.js](https://nodejs.org) 20 ou plus.
+Il faut [Node.js](https://nodejs.org) 22.12 ou plus et une chaîne Rust (voir README.md, « Build and run »).
 
 ```bash
 git clone https://github.com/mochiiwuff/capri-desktop.git
 cd capri-desktop
-npm install
-npm start
+npm ci
+npm run tauri:dev
 ```
 
 Garde ce terminal ouvert tant qu'elle tourne. Pas encore testé sur macOS ni Linux : elle devrait démarrer, mais les tours
@@ -386,7 +386,7 @@ avec ces noms (`.mp3`, `.wav`, `.ogg` ou `.m4a`) :
 
 ## C'est sûr ?
 
-- Tout le code est ici. L'installeur est fabriqué à partir de lui avec `npm run dist` ; tu peux fabriquer le tien.
+- Tout le code est ici. L'installeur est fabriqué à partir de lui avec `npm run tauri:package` ; tu peux fabriquer le tien.
 - Rien ne quitte ton PC (voir plus bas) : elle ne parle à Claude Code que par un hook sur `127.0.0.1`.
 - Ce qu'elle change sur ton système : le hook dans `~/.claude/settings.json` (une sauvegarde est faite avant, et tu peux
   le retirer depuis son menu), et une entrée au démarrage seulement si tu coches « Lancer au démarrage ». Elle se
@@ -501,7 +501,9 @@ scripts/install-hooks.js ajoute / retire le hook dans ~/.claude/settings.json
 tools/build-sprite.py    reconstruit le sprite depuis la découpe d'origine (Python + Pillow, seulement si tu la changes)
 tools/build-cutins.py    découpe les cut-ins et ses expressions dans des images de la série
 tools/build-intro.py     détoure les gros plans de son intro, tous de la même façon
-src/main/                Electron : fenêtre transparente plein écran, clic à travers, tray, bridge HTTP local
+src-tauri/               coque Rust (Tauri) : fenêtre transparente plein écran, clic à travers, tray, mises à jour
+sidecar/                 le processus Node qui fait tourner la logique à côté de la coque
+src/main/                la logique : config, chat, réglages, bridge HTTP local
   windows.js / .ps1      où sont les autres fenêtres (Windows), pour qu'elle s'assoie dessus
   ollama.js              son chat : le modèle local via Ollama, ou un de ses modèles cloud
   apps.js                fermer une appli que tu lui demandes de fermer (après ton clic)
@@ -525,11 +527,11 @@ src/renderer/js/
   voice.js               les sons
 ```
 
-Pour bosser dessus : `npm run dev` active des routes de debug sur le bridge (`/debug/capture` enregistre une image de la fenêtre dans `captures/`,
+Pour bosser dessus : `npm run dev` (comme `npm run tauri:dev`, avec `CAPRI_DEBUG=1`) active des routes de debug sur le bridge (`/debug/capture` enregistre une image de la fenêtre dans `captures/`,
 `/debug/testwin` ouvre des fenêtres de test sur lesquelles elle peut s'asseoir, une par nom, `/debug/mouse` bouge et clique un pointeur
 factice sur la fenêtre de Capri, sans toucher au vrai, `/debug/type` écrit dans son chat, `/debug/menu` liste son menu
 et peut cliquer sur un de ses éléments).
-`npm run dist` fabrique l'installeur Windows dans `dist/`.
+`npm run tauri:package` fabrique l'installeur de cette machine (voir docs/TAURI_RELEASE.md).
 
 ## Crédits et droits
 

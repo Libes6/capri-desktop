@@ -1,5 +1,7 @@
 # Linux X11 window tracking (CAPRI-10)
 
+> Исторический документ: Electron-версия удалена в TAURI-14 (2026-10-29); упоминания Electron описывают то, с чем сравнивали или что переносили. Электрон-код в репозитории не хранится.
+
 Status: **implemented, not yet verified on a real compositing desktop.** It was developed on macOS. The output parsers are tested on output written from the tools' documented formats, the watcher on faked tool runs, and CI adds a probe on Xvfb + openbox. None of these shows it working on GNOME/KDE/Xfce/Cinnamon under X11. Until someone checks it there, treat Linux sitting as experimental.
 
 ## How it works

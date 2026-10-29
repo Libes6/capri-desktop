@@ -48,7 +48,7 @@ function detect({ platform = process.platform, env = process.env, helpers = {}, 
       appClose: win,
       appLaunch: win,
       mediaKeys: win,
-      autostart: win || platform === 'darwin', // Electron's login items; not on Linux yet
+      autostart: win || platform === 'darwin', // login items; not on Linux yet
       ollamaInstall: win,
       ollamaLaunch: win,
     },

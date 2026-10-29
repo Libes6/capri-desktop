@@ -1,6 +1,6 @@
 'use strict';
 
-// What her settings window shows, built from the config and what main knows. Pure (no Electron):
+// What her settings window shows, built from the config and what main knows. Pure (no platform):
 // main.js gathers the facts, this turns them into sections of labelled rows in her language.
 // A row that can be changed has a `control` saying how (select, toggle, range, key, url) and which
 // key of settings-patch.js it sends; main checks what comes back. Keys are never in here: only
@@ -38,7 +38,7 @@ function select(key, pairs, value) {
  *   features: capabilities.all(); autostart: whether she starts with the system right now
  *   screen: { index, count, width, height } of the screen she's on; screens: [{ id, width, height }]
  *   renderNow: the display mode she was started with
- *   about: { version, platform, arch, electron, session }
+ *   about: { version, platform, arch, runtime, session }
  *   updates: the updater's view (updates.js), or nothing
  */
 function settingsView(facts) {
@@ -180,7 +180,7 @@ function settingsView(facts) {
         label: s.system,
         value: [OS_NAMES[about.platform] || about.platform, about.arch, about.session].filter(Boolean).join(' · ') || s.none,
       },
-      { id: 'electron', label: s.electron, value: about.electron || s.none },
+      { id: 'runtime', label: s.runtime, value: about.runtime || s.none },
       { id: 'license', label: s.license, value: 'PolyForm Noncommercial 1.0.0' },
     ],
   };

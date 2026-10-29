@@ -406,10 +406,9 @@ function loadWindowsOnMac({ helperMissing = false } = {}) {
 test('mac helper path: bin/ next to the adapter from the repository, Resources/bin once packaged', () => {
   const { helperPath } = require('../src/main/mac/window-watch');
   const repo = path.join('/src', 'capri', 'src', 'main', 'mac');
-  assert.equal(helperPath(repo, '/whatever'), path.join(repo, 'bin', 'capri-windows'));
+  assert.equal(helperPath(repo, {}), path.join(repo, 'bin', 'capri-windows'));
   const res = path.join('/Applications', 'Capri.app', 'Contents', 'Resources');
-  assert.equal(helperPath(path.join(res, 'app.asar', 'src', 'main', 'mac'), res), path.join(res, 'bin', 'capri-windows'));
-  assert.equal(helperPath(path.join(res, 'app.asar.unpacked', 'src', 'main', 'mac'), res), path.join(res, 'bin', 'capri-windows'));
+  assert.equal(helperPath(repo, { CAPRI_RESOURCES: res }), path.join(res, 'bin', 'capri-windows'));
 });
 
 test('mac watch: snapshots behind the lock screen are ignored, the last good one holds', async () => {

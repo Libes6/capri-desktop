@@ -131,7 +131,7 @@ fn mac_overlay_level(win: &WebviewWindow) -> String {
     let Ok(ptr) = win.ns_window() else { return "no ns_window".into() };
     let w: &AnyObject = unsafe { &*(ptr as *const AnyObject) };
     unsafe {
-        // NSScreenSaverWindowLevel (what Electron's 'screen-saver' maps to)
+        // NSScreenSaverWindowLevel (the 'screen-saver' level)
         let _: () = msg_send![w, setLevel: 1000isize];
         // canJoinAllSpaces | stationary | fullScreenAuxiliary: every Space, over full-screen apps
         let _: () = msg_send![w, setCollectionBehavior: behavior];

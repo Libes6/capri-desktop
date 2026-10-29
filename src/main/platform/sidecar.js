@@ -2,7 +2,7 @@
 
 // The sidecar platform (platform/index.js) for the Tauri build (TAURI-04): the core runs in a Node
 // process next to the Rust shell, and what only the system can do is asked of Rust over JSON-RPC
-// (sidecar/rpc.js, one JSON line each way on stdin/stdout). Plain node: no Electron.
+// (sidecar/rpc.js, one JSON line each way on stdin/stdout). Plain node.
 //
 // What the Rust side answers today: paths, the overlay window (create, bounds, click-through, level,
 // focusable), events to her page, quit / relaunch / exit, the screens and the cursor (pushed by Rust,
@@ -45,7 +45,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
   const tell = (method, params) => rpc.notify(method, params);
 
   let preferredLanguages = []; // the system's list, asked once in init() (system-languages.js)
-  let masterKey = null; // Buffer, once init() has it; null: no key store, keys stay plain (as Electron without safeStorage)
+  let masterKey = null; // Buffer, once init() has it; null: no key store, keys stay plain (plain keys)
   let locked = Boolean(hello.locked); // the screen lock, from hello and then the events
   let idle = 'active'; // the last idle state Rust gave
   let idleAsked = 0;
@@ -271,7 +271,6 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       renderModes: false, // WKWebView / WebView2 / WebKitGTK choose their own renderer: no display mode (settings, tray)
       setRenderMode: () => {},
       gpuStatus: () => ({}),
-      serveAssets: () => {}, // Rust serves capri://usersounds/ from userData/sounds itself
     },
 
     // the login item: Rust says what it is when it starts (hello), and does what it is told
@@ -294,7 +293,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       toDip: (rect) => rect, // macOS and Linux coordinates are DIPs already; Windows is TAURI-05
     }),
 
-    // Electron's getSystemIdleState is synchronous: 'locked' from the lock events (and hello), else the
+    // getSystemIdleState is synchronous: 'locked' from the lock events (and hello), else the
     // last idle state Rust gave, which this call refreshes for the next one (at most once a second).
     power: Object.assign(power, {
       getSystemIdleState: (seconds = 60) => {
@@ -308,7 +307,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
     }),
 
     secrets: {
-      // the core tells a sealed key by this prefix (setup.js createKeys): "kc:" here, "enc:" in Electron
+      // the core tells a sealed key by this prefix (setup.js createKeys): "kc:"
       prefix: 'kc',
       isAvailable: () => masterKey !== null,
       encrypt: (text) => {
@@ -328,7 +327,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       showItemInFolder: (file) => { ask('shell.showItemInFolder', { path: String(file) }); },
     },
 
-    // global shortcuts (tauri-plugin-global-shortcut, Electron's accelerator names). Whether the system
+    // global shortcuts (tauri-plugin-global-shortcut, accelerator names such as 'Control+Alt+C'). Whether the system
     // took it is known a moment later, so this says yes and logs the refusal (another app holds it)
     shortcuts: {
       register: (accelerator, fn) => {
@@ -443,9 +442,8 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       handle: (channel, fn) => ipc.handle.set(channel, fn),
     },
 
-    // tauri-plugin-updater, driven by Rust (updates.js reads `transport` to pick this one)
+    // tauri-plugin-updater, driven by Rust
     updater: {
-      transport: 'tauri',
       get: () => ({
         tauri: {
           // { mode: 'install' | 'notify' | 'disabled', reason, test }: decided by Rust from its configuration
@@ -457,7 +455,6 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       }),
     },
 
-    native: null,
     // the dev debug routes (sidecar/debug.js): a request to Rust as it is
     debugRequest: (method, params) => rpc.request(method, params),
     overlayNow: () => overlay,

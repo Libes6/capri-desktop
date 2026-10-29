@@ -1,6 +1,6 @@
 'use strict';
 
-// Which of her languages she speaks. Pure: the system's languages are passed in (main.js asks Electron),
+// Which of her languages she speaks. Pure: the system's languages are passed in (the platform asks the system),
 // so the choice can be tested without an app.
 
 // 'ru-RU', 'en_US', 'pt-BR', 'zh-Hans-CN', 'en-US.UTF-8' -> 'ru', 'en', 'pt', 'zh', 'en' ('' when nothing usable)

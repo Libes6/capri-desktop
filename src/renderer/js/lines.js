@@ -269,7 +269,6 @@ export const LINES = {
     },
     // passée sur ton autre écran pour te suivre
     screens: { hello: ['Coucou, l’autre écran.', 'Tu bosses ici maintenant ? J’arrive.', 'Me voilà.'] },
-    keysLost: ['Je n’ai pas pu reprendre ta clé API ({providers}) de l’ancienne version. Entre-la de nouveau : mon menu, Modèle IA, puis Clé API.'],
     update: ['Une nouvelle version de moi est sortie : {version}. C’est dans les réglages, quand tu veux.', 'Version {version} disponible. Je peux attendre.'],
     // elle réagit à ton PC (pc.js) : processeur, batterie, réseau, clé USB, jeu
     pc: {
@@ -624,7 +623,6 @@ export const LINES = {
     },
     // over on your other screen, following you
     screens: { hello: ['Hi, other screen.', 'Working over here now? Coming.', 'There you are.'] },
-    keysLost: ['I couldn’t carry your API key ({providers}) over from the old version. Please enter it again: my menu, AI model, then API key.'],
     update: ['A new version of me is out: {version}. It’s in the settings, whenever you like.', 'Version {version} is available. No rush.'],
     // she reacts to your PC (pc.js): processor, battery, network, USB stick, game
     pc: {
@@ -975,7 +973,6 @@ export const LINES = {
     },
     // en tu otra pantalla, siguiéndote
     screens: { hello: ['Hola, otra pantalla.', '¿Ahora trabajas aquí? Voy.', 'Aquí estás.'] },
-    keysLost: ['No pude traer tu clave de API ({providers}) de la versión anterior. Introdúcela de nuevo: mi menú, Modelo IA y luego Clave API.'],
     update: ['Salió una nueva versión de mí: {version}. Está en los ajustes, cuando quieras.', 'Versión {version} disponible. Sin prisa.'],
     // reacciona a tu PC (pc.js): procesador, batería, red, USB, juego
     pc: {
@@ -1328,7 +1325,6 @@ export const LINES = {
     },
     // na sua outra tela, te seguindo
     screens: { hello: ['Oi, outra tela.', 'Trabalhando aqui agora? Tô indo.', 'Aí está você.'] },
-    keysLost: ['Não consegui trazer sua chave de API ({providers}) da versão anterior. Digite-a de novo: meu menu, Modelo de IA e depois Chave API.'],
     update: ['Saiu uma nova versão de mim: {version}. Está nas configurações, quando quiser.', 'Versão {version} disponível. Sem pressa.'],
     // ela reage ao seu PC (pc.js): processador, bateria, rede, pendrive, jogo
     pc: {
@@ -1683,7 +1679,6 @@ export const LINES = {
     },
     // на твоём другом экране, следом за тобой
     screens: { hello: ['Привет, другой экран.', 'Теперь работаешь тут? Иду.', 'Вот ты где.'] },
-    keysLost: ['Мне не удалось перенести твой API-ключ ({providers}) из прошлой версии. Введи его заново: моё меню, Модель ИИ, затем API-ключ.'],
     update: ['Вышла моя новая версия: {version}. Она в настройках, когда захочешь.', 'Доступна версия {version}. Не к спеху.'],
     // она реагирует на твой ПК (pc.js): процессор, батарея, сеть, флешка, игра
     pc: {

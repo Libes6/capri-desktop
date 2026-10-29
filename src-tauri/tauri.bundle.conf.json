@@ -7,11 +7,6 @@
     "macOS": {
       "signingIdentity": "-",
       "entitlements": "Entitlements.plist"
-    },
-    "windows": {
-      "nsis": {
-        "installerHooks": "windows/hooks.nsh"
-      }
     }
   }
 }

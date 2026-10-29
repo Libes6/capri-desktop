@@ -6,8 +6,8 @@
 //
 //   node scripts/package-smoke.js <executable> [--expect-window-tracking] [--port N] [--wait seconds]
 //
-// The profile (CAPRI_USER_DATA) is a new temporary folder, the migration from the Electron build is off
-// (CAPRI_NO_MIGRATE=1), the bridge has its own port: nothing of a real profile, of the assistants' settings or of the key store is
+// The profile (CAPRI_USER_DATA) is a new temporary folder, nothing of a real profile is read
+// the bridge has its own port: nothing of a real profile, of the assistants' settings or of the key store is
 // touched. Only the process it started is stopped. A running Capri of the same identifier makes the new copy exit at once
 // (single instance): that is reported as such, not as a failure of the package.
 
@@ -34,7 +34,7 @@ function health(port) {
 /** → { ok, ready, healthy, tracking, exited, log } */
 async function smoke(executable, { port = 47891, expectWindowTracking = false, waitMs = 60000, log = console.log } = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-package-smoke-'));
-  const env = { ...process.env, CAPRI_USER_DATA: profile, CAPRI_PORT: String(port), CAPRI_NO_MIGRATE: '1' };
+  const env = { ...process.env, CAPRI_USER_DATA: profile, CAPRI_PORT: String(port) };
   delete env.CAPRI_HOOK_BIN;
   const child = spawn(path.resolve(executable), [], { env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   let out = '';

@@ -3,7 +3,7 @@
 // The core of Capri: her state (the overlay and settings windows she is shown in, the chat, the
 // updates, the screens), the rules (what the menu offers, what a settings change does) and the
 // handlers of every command from her pages. It runs on a platform (platform/index.js) and never
-// imports Electron: main.js is the Electron shell around it, platform/electron.js its hands.
+// imports a shell: sidecar/main.js runs it under the Tauri shell (src-tauri/), platform/sidecar.js its hands.
 //
 //   const core = createCore({ platform, port, dev, smoke, notify })
 //   (watchWindows: another window watcher than windows.js's, for the tests)
@@ -28,7 +28,7 @@ const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
 const { watchPower } = require('./power');
 const { createCapabilities } = require('./capabilities');
 const { settingsView } = require('./settings-view');
-const { startUpdates, isReleasePage, bridgeProblem } = require('./updates');
+const { startUpdates, isReleasePage } = require('./updates');
 const { createDispatcher } = require('./dispatch');
 const settingsPatch = require('./settings-patch');
 const llm = require('./llm');
@@ -48,9 +48,7 @@ const OLLAMA_SITE = 'https://ollama.com';
 // not one the helper reports as a perch (mac/window-watch.js), and showInactive() brings it up anyway.
 const PERCH_ON_TOP = process.platform !== 'darwin';
 
-// migration (TAURI-09, the Tauri build): { keysLost: [provider ids whose API key could not be carried over from the
-// Electron build], noticeDue(): bool, noticeShown() }. Her pages are told once per launch (keysLost in config:get).
-function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, dev = false, smoke = false, notify = {}, watchWindows = startWindowWatch, migration = null }) {
+function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, dev = false, smoke = false, notify = {}, watchWindows = startWindowWatch }) {
   const DEV = dev;
   const SMOKE = smoke;
   const PORT = port;
@@ -288,7 +286,7 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
       features: caps.all(),
       autostart: caps.has('autostart') && platform.autostart.isEnabled(),
       screen: { index: Math.max(0, screens.findIndex((d) => d.id === current.id)), count: screens.length, width: current.size.width, height: current.size.height },
-      about: { version: platform.app.version(), platform: process.platform, arch: process.arch, electron: platform.app.runtimeVersion(), session: caps.session },
+      about: { version: platform.app.version(), platform: process.platform, arch: process.arch, runtime: platform.app.runtimeVersion(), session: caps.session },
       updates: updates?.view(),
     };
   }
@@ -638,28 +636,8 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     const o = overlay.bounds();
     return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
-  // The first answer of a launch also says which keys did not come over from the Electron build and are
-  // still missing (names, not keys), so she can say so in her own words: enter them again.
-  let keysLostSaid = false;
-  function keysLostNames() {
-    if (keysLostSaid || !migration?.keysLost?.length) return [];
-    const have = config.load().apiKeys || {};
-    const missing = migration.keysLost.filter((id) => !have[id]);
-    if (!missing.length || (migration.noticeDue && !migration.noticeDue())) return [];
-    keysLostSaid = true;
-    try {
-      migration.noticeShown?.();
-    } catch (err) {
-      console.error('[capri] migration notice:', err.message);
-    }
-    return missing.map((id) => llm.PROVIDERS[id]?.label.replace(/\s*\(.*\)\s*$/, '') || id);
-  }
-  ipcHandle('config:get', () => {
-    const cfg = rendererConfig();
-    const keysLost = keysLostNames();
-    return keysLost.length ? { ...cfg, keysLost } : cfg;
-  });
-  // her settings window (settings-preload.js): answered only for that window
+  ipcHandle('config:get', () => rendererConfig());
+  // her settings window : answered only for that window
   ipcHandle('settings:view', (_arg, sender) => (settings?.owns(sender) ? settingsView(settingsFacts()) : null));
   ipcOn('settings:close', (_arg, sender) => settings?.owns(sender) && settings.close());
   ipcOn('settings:menu', (_arg, sender) => settings?.owns(sender) && tray?.popup('settings'));
@@ -892,14 +870,14 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
   }
 
   // The platform is ready: her windows, her tray, the watchers, the bridge for the assistants' hooks.
-  // debug: the --dev routes (the Electron shell's, main.js)
+  // debug: the --dev routes (sidecar/debug.js)
   function start({ debug = null } = {}) {
     if (!['codex', 'claude'].includes(config.load().assistant)) config.save({ assistant: activeAssistant().id });
     settings = platform.windows.createSettings({
       view: () => settingsView(settingsFacts()),
       area: () => targetDisplay().workArea,
     });
-    updates = startUpdates({ platform, smoke: SMOKE, onChange: updatesChanged, prepareBridge });
+    updates = startUpdates({ platform, smoke: SMOKE, onChange: updatesChanged });
     createOverlay();
     createTray();
     // an adapter that starts or gives up changes what she offers: the menu and the overlay hear of it
@@ -945,33 +923,6 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     powerWatch = watchPower({ power: platform.power, onChange: sendPower });
   }
 
-  // TAURI-09 (Electron build only): the sealed keys and the login item's state for the Tauri build to pick
-  // up (migrate-prepare.js). Never throws, never logs a key; { ok:false, skipped } says why it did not happen.
-  async function prepareTauriMigration({ releaseAutostart = false } = {}) {
-    if (typeof platform.migration?.prepareTauri !== 'function') return { ok: false, skipped: 'not an Electron build' };
-    try {
-      return await platform.migration.prepareTauri({ userData: platform.paths.get('userData'), apiKeys: config.load().apiKeys, releaseAutostart });
-    } catch (err) {
-      console.error('[capri] Tauri migration: not prepared:', err.message);
-      return { ok: false, skipped: err.message };
-    }
-  }
-
-  // TAURI-13: just before an update that replaces this app by the Tauri build is installed (updates.js, only for that
-  // update): the keys sealed for it and Electron's login item let go. → { problem, undo } for the controller: `problem` says
-  // which keys she will have to enter again, `undo` puts the login item back if the install then fails.
-  async function prepareBridge() {
-    const result = await prepareTauriMigration({ releaseAutostart: true });
-    const apiKeys = config.load().apiKeys;
-    console.log(`[capri] Tauri migration (update): ok=${result.ok} keys=${(result.keys || []).length} failed=${(result.failed || []).length} autostartReleased=${result.autostartReleased ?? 'n/a'}${result.skipped ? ` skipped=${String(result.skipped).slice(0, 120)}` : ''}`);
-    return {
-      problem: bridgeProblem(result, apiKeys, (id) => llm.PROVIDERS[id]?.label || id),
-      undo: () => {
-        if (result.autostartReleased === true) platform.autostart.set(true);
-      },
-    };
-  }
-
   function stop() {
     platform.shortcuts.unregisterAll();
     powerWatch?.stop();
@@ -1005,7 +956,6 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
     applyRender,
     command: sendCommand,
     userSoundsDir,
-    prepareTauriMigration,
     menu: { labels: () => menuLabels(), click: menuClick },
     power: () => powerWatch,
     overlay: () => overlay,

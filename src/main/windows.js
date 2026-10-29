@@ -4,7 +4,7 @@
 // small PowerShell helper does the Win32 calls; on Linux X11 linux/x11-watch.js reads the window
 // manager (EWMH) through xprop/xwininfo. Either gives physical pixels, which we turn into the
 // overlay's coordinates. On macOS mac/window-watch.js runs a small Swift helper whose points already
-// are Electron's screen coordinates. The Windows helper also says when the window in front is another AI (ChatGPT,
+// are the overlay's screen coordinates (DIPs). The Windows helper also says when the window in front is another AI (ChatGPT,
 // Gemini…: `ai`, the names it matched), for her jealousy, and never passes on a title; which game
 // is in front, if one (`game`, its folder in Steam's library or another launcher's); and the USB
 // sticks plugged in (`usb`, drive letters), and the last device plugged in or out (`plug`).
@@ -13,14 +13,13 @@ const path = require('node:path');
 const readline = require('node:readline');
 const { spawn } = require('node:child_process');
 
-// in the installed app it sits next to the app archive (asarUnpack), where PowerShell can read it
-// (the Tauri build: <resources>/windows.ps1, CAPRI_RESOURCES from sidecar/main.js)
+// in the Tauri build: <resources>/windows.ps1 (CAPRI_RESOURCES from sidecar/main.js)
 const SCRIPT = process.env.CAPRI_RESOURCES
   ? path.join(process.env.CAPRI_RESOURCES, 'windows.ps1')
-  : path.join(__dirname, 'windows.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+  : path.join(__dirname, 'windows.ps1');
 
 // The snapshots of a watcher, as seen from her window, to onUpdate. `toDip(win)`: the watcher's
-// physical-pixel rect -> Electron's screen DIPs ({ x, y, width, height }).
+// physical-pixel rect -> screen DIPs ({ x, y, width, height }).
 function createFeed({ overlay, onUpdate, toDip }) {
   let last = null; // the watcher's last snapshot: it only speaks when something changes
 

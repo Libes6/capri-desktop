@@ -1,4 +1,0 @@
-{
-  "tauri": false,
-  "about": "true: the release carries latest*.yml that point the Electron build at the Tauri installers (docs/TAURI_BRIDGE.md). Keep it true in every release until the Electron users have moved."
-}

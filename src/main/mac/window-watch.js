@@ -2,10 +2,10 @@
 
 // macOS window watch: the same contract as startWindowWatch() in ../windows.js, which starts it on
 // macOS, fed by the small Swift helper next to this file (capri-windows.swift, built into bin/ by
-// scripts/build-mac-helper.js; electron-builder does it before packing, scripts/before-pack.js).
+// scripts/build-mac-helper.js; scripts/package-tauri.js builds it for the package).
 //
 // The helper speaks in global points with the origin at the main display's top-left corner and y
-// going down. Electron's screen coordinates on macOS are the same points (DIP), so unlike the
+// going down. The screen coordinates of the overlay on macOS are the same points (DIP), so unlike the
 // Windows helper's physical pixels nothing has to be scaled: only shifted into the overlay's frame.
 // Of the Windows fields only `fg` and `wins` exist here; the others keep their empty defaults.
 
@@ -14,15 +14,13 @@ const fs = require('node:fs');
 const readline = require('node:readline');
 const { spawn: nodeSpawn } = require('node:child_process');
 
-// From the repository: bin/ next to this file (scripts/build-mac-helper.js). In the packaged app it
-// is outside the app archive, in the bundle's Resources/bin (package.json build.mac.extraResources),
-// so no other platform's package carries it.
-// In the Tauri build the core runs as a bundled sidecar with no real source folder: it is told where
-// the app's resources are (CAPRI_RESOURCES, sidecar/main.js), and the helper sits in <resources>/bin.
-function helperPath(dir = __dirname, resources = process.resourcesPath, env = process.env) {
+// From the repository: bin/ next to this file (scripts/build-mac-helper.js). In the Tauri build the
+// core runs as a bundled sidecar with no real source folder: it is told where the app's resources are
+// (CAPRI_RESOURCES, sidecar/main.js), and the helper sits in <resources>/bin (no other platform's
+// package carries it).
+function helperPath(dir = __dirname, env = process.env) {
   if (env.CAPRI_RESOURCES) return path.join(env.CAPRI_RESOURCES, 'bin', 'capri-windows');
-  const packaged = dir.split(path.sep).some((part) => part === 'app.asar' || part === 'app.asar.unpacked');
-  return packaged && resources ? path.join(resources, 'bin', 'capri-windows') : path.join(dir, 'bin', 'capri-windows');
+  return path.join(dir, 'bin', 'capri-windows');
 }
 const HELPER = helperPath();
 
