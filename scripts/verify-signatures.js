@@ -38,9 +38,9 @@ function verify(bytes, signatureB64, pub) {
   const signature = sig.raw.subarray(10);
   const message = alg === 'ED' ? crypto.createHash('blake2b512').update(bytes).digest() : bytes;
   if (!crypto.verify(null, message, pub.key, signature)) throw new Error('the signature does not match the file');
-  if (sig.trusted !== undefined && sig.global) {
-    if (!crypto.verify(null, Buffer.concat([signature, Buffer.from(sig.trusted)]), pub.key, sig.global)) throw new Error('the trusted comment is not signed');
-  }
+  // the updater (minisign-verify) refuses a signature without its trusted comment and the signature of it: so does this
+  if (sig.trusted === undefined || !sig.global || sig.global.length !== 64) throw new Error('the signature lacks its signed trusted comment');
+  if (!crypto.verify(null, Buffer.concat([signature, Buffer.from(sig.trusted)]), pub.key, sig.global)) throw new Error('the trusted comment is not signed');
   return true;
 }
 

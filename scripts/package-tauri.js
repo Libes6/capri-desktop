@@ -246,6 +246,8 @@ function main(argv = process.argv.slice(2)) {
   const publicKey = (process.env.CAPRI_UPDATER_PUBLIC_KEY || '').trim();
   const updates = !argv.includes('--no-updates') && publicKey !== '';
   if (argv.includes('--require-updates') && !updates) throw new Error('--require-updates: CAPRI_UPDATER_PUBLIC_KEY is not set (a release build must have updates on)');
+  // a binary compiled with CAPRI_LOCAL_UPDATER_TEST=1 accepts a plain-http loopback feed: only scripts/updater-smoke-tauri.js builds one
+  if (argv.includes('--require-updates') && process.env.CAPRI_LOCAL_UPDATER_TEST === '1') throw new Error('--require-updates: CAPRI_LOCAL_UPDATER_TEST is set (a test-only build must never be a release)');
   if (updates && !process.env.TAURI_SIGNING_PRIVATE_KEY) {
     throw new Error('CAPRI_UPDATER_PUBLIC_KEY is set but TAURI_SIGNING_PRIVATE_KEY is not: the update packages could not be signed');
   }

@@ -106,6 +106,11 @@ test('signatures: the update packages verify against the public key; a changed b
   assert.throws(() => sigs.verify(Buffer.from('the packagE'), a.sign(bytes), sigs.publicKey(a.pub)), /does not match/);
   assert.throws(() => sigs.verify(bytes, b.sign(bytes), sigs.publicKey(a.pub)), /another key/);
   assert.throws(() => sigs.publicKey('not a key'), /public key/);
+  // a signature cut down to its first two lines, or with a changed trusted comment: the updater would refuse it, so does the check
+  const full = Buffer.from(a.sign(bytes), 'base64').toString('utf8').split('\n');
+  const text = (lines) => Buffer.from(lines.join('\n')).toString('base64');
+  assert.throws(() => sigs.verify(bytes, text(full.slice(0, 2)), sigs.publicKey(a.pub)), /trusted comment/);
+  assert.throws(() => sigs.verify(bytes, text([full[0], full[1], 'trusted comment: timestamp:2 file:y', full[3], '']), sigs.publicKey(a.pub)), /trusted comment is not signed/);
   const dir = tmp(t);
   fs.writeFileSync(path.join(dir, 'Capri.AppImage'), bytes);
   fs.writeFileSync(path.join(dir, 'Capri.AppImage.sig'), a.sign(bytes));
