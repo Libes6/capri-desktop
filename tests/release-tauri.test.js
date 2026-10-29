@@ -265,7 +265,8 @@ test('the Electron package takes nothing of the Tauri build: no shell, sidecar, 
 
 test('the Tauri package takes only what package-tauri stages: the sidecar, the resources map, the bundle config', () => {
   const bundle = JSON.parse(read('src-tauri', 'tauri.bundle.conf.json')).bundle;
-  assert.deepEqual(Object.keys(bundle).sort(), ['active', 'externalBin', 'macOS']);
+  assert.deepEqual(Object.keys(bundle).sort(), ['active', 'externalBin', 'macOS', 'windows']);
+  assert.deepEqual(bundle.windows, { nsis: { installerHooks: 'windows/hooks.nsh' } }); // TAURI-13: removes the Electron install, restarts after --force-run
   assert.equal(bundle.macOS.signingIdentity, '-');
   const plist = read('src-tauri', bundle.macOS.entitlements);
   assert.match(plist, /com\.apple\.security\.cs\.allow-jit/);

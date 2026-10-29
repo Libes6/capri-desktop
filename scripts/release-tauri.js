@@ -20,6 +20,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const manifest = require('./release-manifest');
+const bridge = require('./bridge-feed');
 
 const ROOT = path.resolve(__dirname, '..');
 const TAG_PREFIX = manifest.TAG_PREFIX;
@@ -48,8 +49,12 @@ function versions(root = ROOT) {
 
 const sha256 = (file) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
-/** latest.json, the packages, .sig and SHA256SUMS (release-manifest), plus the dmg / deb, all under release names. */
-function assemble({ artifacts, version, out, notes = '' }) {
+/**
+ * latest.json, the packages, .sig and SHA256SUMS (release-manifest), plus the dmg / deb, all under release names.
+ * bridge (TAURI-13): also the zip of the Tauri Capri.app for the Electron build's Mac updater and the three latest*.yml
+ * of electron-updater that point at the Tauri installers (scripts/bridge-feed.js).
+ */
+function assemble({ artifacts, version, out, notes = '', bridge: withBridge = false }) {
   const { feed } = manifest.build({ artifacts, version, notes: notes || `Capri v${version}`, out });
   const sums = fs.readFileSync(path.join(out, 'SHA256SUMS'), 'utf8').split('\n').filter(Boolean);
   for (const platform of Object.keys(feed.platforms)) {
@@ -63,6 +68,17 @@ function assemble({ artifacts, version, out, notes = '' }) {
     fs.copyFileSync(from, path.join(out, name));
     sums.push(`${sha256(from)}  ${name}`);
   }
+  if (withBridge) {
+    const folder = path.join(artifacts, 'darwin-aarch64');
+    const zips = fs.existsSync(folder) ? fs.readdirSync(folder).filter((n) => n.endsWith('-bridge.zip')) : [];
+    if (zips.length !== 1) throw new Error(`bridge: expected one *-bridge.zip in ${folder} (made by package-tauri.js --collect with the bridge on), found ${zips.length}`);
+    const from = path.join(folder, zips[0]);
+    if (!fs.statSync(from).size) throw new Error(`Empty bridge package: ${zips[0]}`);
+    const name = bridge.bridgeZipName(version);
+    fs.copyFileSync(from, path.join(out, name));
+    sums.push(`${sha256(from)}  ${name}`);
+    bridge.buildFeeds({ dir: out, version, date: feed.pub_date });
+  }
   fs.writeFileSync(path.join(out, 'SHA256SUMS'), `${sums.join('\n')}\n`);
   return feed;
 }
@@ -71,7 +87,7 @@ function assemble({ artifacts, version, out, notes = '' }) {
  * Checks a folder made by assemble() as a release would be: the feed names this version's tag and files that are there,
  * the signatures are the .sig files, SHA256SUMS lists every file and every hash is right. → the names to upload, feed last.
  */
-function checkRelease(dir, version) {
+function checkRelease(dir, version, { bridge: withBridge = false } = {}) {
   const read = (name) => {
     try { return fs.readFileSync(path.join(dir, name), 'utf8'); } catch { throw new Error(`Missing ${name}`); }
   };
@@ -88,21 +104,32 @@ function checkRelease(dir, version) {
     if (read(`${name}.sig`).trim() !== String(entry.signature).trim()) throw new Error(`${platform}: the signature in latest.json is not ${name}.sig`);
   }
   const names = fs.readdirSync(dir).filter((n) => fs.statSync(path.join(dir, n)).isFile());
+  const isFeed = (n) => bridge.FEED_FILES.includes(n);
+  // the electron-updater feeds are there exactly when the bridge is on, and name the files of this release
+  if (withBridge) {
+    bridge.checkFeeds(dir, version);
+    if (!names.includes(bridge.bridgeZipName(version))) throw new Error(`bridge: ${bridge.bridgeZipName(version)} is not in the release`);
+  } else if (names.some(isFeed)) {
+    throw new Error(`Unexpected ${names.filter(isFeed).join(', ')} (the bridge is off)`);
+  }
   const listed = new Map(read('SHA256SUMS').split('\n').filter(Boolean).map((l) => { const [h, n] = l.split(/\s{2}/); return [n, h]; }));
   for (const name of names) {
-    if (/\.sig$|^SHA256SUMS$|^latest\.json$/.test(name)) continue;
+    if (/\.sig$|^SHA256SUMS$|^latest\.json$/.test(name) || isFeed(name)) continue;
     if (!listed.has(name)) throw new Error(`SHA256SUMS does not list ${name}`);
     if (listed.get(name) !== sha256(path.join(dir, name))) throw new Error(`SHA256SUMS: wrong hash for ${name}`);
   }
   for (const name of listed.keys()) if (!names.includes(name)) throw new Error(`SHA256SUMS lists ${name}, which is not there`);
   const body = names.filter((n) => n !== 'latest.json');
-  for (const name of body) if (!isTauriAsset(name)) throw new Error(`Unexpected file in the release folder: ${name}`);
+  for (const name of body) if (!isTauriAsset(name) && !isFeed(name)) throw new Error(`Unexpected file in the release folder: ${name}`);
   return [...body.sort(), 'latest.json'];
 }
 
 /** The release notes block of this pipeline, kept between markers so that a re-run replaces it and nothing else. */
-function tauriBlock(version, sha) {
-  return `${BEGIN}\n**Tauri build ${version}** from ${sha}.\n\nmacOS Apple Silicon: \`.dmg\` (and \`.app.tar.gz\` for in-app updates), Windows x64: NSIS \`-setup.exe\`, Linux x64: \`.AppImage\` and \`.deb\`. In-app updates of the Tauri build read \`latest.json\`.\n\nUnsigned for the operating systems: macOS is ad-hoc signed (no Developer ID, no notarization: Gatekeeper asks to open it), the Windows installer is not Authenticode-signed (SmartScreen may warn).\n\nVerify \`SHA256SUMS\` and test the installers before publishing.\n${END}`;
+function tauriBlock(version, sha, { bridge: withBridge = false } = {}) {
+  const bridgeNote = withBridge
+    ? `\n\n**Bridge:** \`latest.yml\`, \`latest-mac.yml\` and \`latest-linux.yml\` of this release point the Electron build's own updater at the Tauri installers (\`-macOS-arm64-bridge.zip\`, \`-Windows-x64-setup.exe\`, \`-Linux-x64.AppImage\`): an installed Electron Capri updates itself into this one.`
+    : '';
+  return `${BEGIN}\n**Tauri build ${version}** from ${sha}.${bridgeNote}\n\nmacOS Apple Silicon: \`.dmg\` (and \`.app.tar.gz\` for in-app updates), Windows x64: NSIS \`-setup.exe\`, Linux x64: \`.AppImage\` and \`.deb\`. In-app updates of the Tauri build read \`latest.json\`.\n\nUnsigned for the operating systems: macOS is ad-hoc signed (no Developer ID, no notarization: Gatekeeper asks to open it), the Windows installer is not Authenticode-signed (SmartScreen may warn).\n\nVerify \`SHA256SUMS\` and test the installers before publishing.\n${END}`;
 }
 
 function mergeBody(existing, block) {
@@ -117,7 +144,7 @@ function mergeBody(existing, block) {
  * Decides what to do. existing: the release of the tag, if any (GitHub's object), refs: matching tag refs.
  * Throws for everything that must not be done; returns { create, payload }.
  */
-function draftPlan({ existing, refs = [], version, sha, assets = [], allowOtherCommit = false }) {
+function draftPlan({ existing, refs = [], version, sha, assets = [], allowOtherCommit = false, bridge: withBridge = false }) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) throw new Error('Use a stable x.y.z package version');
   if (!sha) throw new Error('GITHUB_SHA is not set');
   const tag = `${TAG_PREFIX}${version}`;
@@ -130,7 +157,7 @@ function draftPlan({ existing, refs = [], version, sha, assets = [], allowOtherC
     const others = assets.filter((a) => !isTauriAsset(a.name));
     if (others.length) throw new Error(`The draft ${tag} holds files built from ${existing.target_commitish} (${others.length} not ours); build both from the same commit, or delete the draft`);
   }
-  const body = mergeBody(existing?.body, tauriBlock(version, sha));
+  const body = mergeBody(existing?.body, tauriBlock(version, sha, { bridge: withBridge }));
   return {
     create: !existing,
     payload: { tag_name: tag, target_commitish: sha, name: existing?.name || `Capri v${version}`, draft: true, prerelease: false, body },
@@ -166,11 +193,12 @@ function draft(dir) {
   const version = versions();
   const { GITHUB_REPOSITORY: repo, GITHUB_SHA: sha } = process.env;
   if (!repo || !sha) throw new Error('Run this in GitHub Actions (GITHUB_REPOSITORY, GITHUB_SHA)');
-  const names = checkRelease(dir, version);
+  const withBridge = bridge.bridgeEnabled();
+  const names = checkRelease(dir, version, { bridge: withBridge });
   const existing = findRelease(repo, version);
   const assets = existing ? JSON.parse(gh(['api', '--paginate', '--slurp', `repos/${repo}/releases/${existing.id}/assets?per_page=100`])).flat() : [];
   const refs = JSON.parse(gh(['api', `repos/${repo}/git/matching-refs/tags/${TAG_PREFIX}${version}`]));
-  const { create, payload } = draftPlan({ existing, refs, version, sha, assets, allowOtherCommit: process.env.CAPRI_ALLOW_OTHER_COMMIT === '1' });
+  const { create, payload } = draftPlan({ existing, refs, version, sha, assets, allowOtherCommit: process.env.CAPRI_ALLOW_OTHER_COMMIT === '1', bridge: withBridge });
   if (payload.draft !== true) throw new Error('refusing to publish');
   const endpoint = create ? `repos/${repo}/releases` : `repos/${repo}/releases/${existing.id}`;
   const release = JSON.parse(gh(['api', '--method', create ? 'POST' : 'PATCH', endpoint, '--input', '-'], JSON.stringify(payload)));
@@ -193,8 +221,8 @@ function main(argv = process.argv.slice(2)) {
     const notesFile = option('--notes');
     const [artifacts, out] = rest;
     if (!artifacts || !out) throw new Error('usage: assemble <artifacts> <out> [--notes <file>]');
-    const feed = assemble({ artifacts: path.resolve(artifacts), version: versions(), out: path.resolve(out), notes: notesFile ? fs.readFileSync(notesFile, 'utf8').trim() : '' });
-    return console.log(`assembled ${feed.version}: ${Object.keys(feed.platforms).join(', ')}`);
+    const feed = assemble({ artifacts: path.resolve(artifacts), version: versions(), out: path.resolve(out), notes: notesFile ? fs.readFileSync(notesFile, 'utf8').trim() : '', bridge: bridge.bridgeEnabled() });
+    return console.log(`assembled ${feed.version}: ${Object.keys(feed.platforms).join(', ')}${bridge.bridgeEnabled() ? ' + the Electron bridge feeds' : ''}`);
   }
   if (command === 'draft') return draft(path.resolve(rest[0] || 'release-assets'));
   throw new Error('usage: release-tauri.js versions | plan | assemble <artifacts> <out> | draft <out>');

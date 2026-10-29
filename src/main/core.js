@@ -28,7 +28,7 @@ const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
 const { watchPower } = require('./power');
 const { createCapabilities } = require('./capabilities');
 const { settingsView } = require('./settings-view');
-const { startUpdates, isReleasePage } = require('./updates');
+const { startUpdates, isReleasePage, bridgeProblem } = require('./updates');
 const { createDispatcher } = require('./dispatch');
 const settingsPatch = require('./settings-patch');
 const llm = require('./llm');
@@ -898,7 +898,7 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
       view: () => settingsView(settingsFacts()),
       area: () => targetDisplay().workArea,
     });
-    updates = startUpdates({ platform, smoke: SMOKE, onChange: updatesChanged });
+    updates = startUpdates({ platform, smoke: SMOKE, onChange: updatesChanged, prepareBridge });
     createOverlay();
     createTray();
     // an adapter that starts or gives up changes what she offers: the menu and the overlay hear of it
@@ -954,6 +954,21 @@ function createCore({ platform, port = Number(process.env.CAPRI_PORT) || 47823, 
       console.error('[capri] Tauri migration: not prepared:', err.message);
       return { ok: false, skipped: err.message };
     }
+  }
+
+  // TAURI-13: just before an update that replaces this app by the Tauri build is installed (updates.js, only for that
+  // update): the keys sealed for it and Electron's login item let go. → { problem, undo } for the controller: `problem` says
+  // which keys she will have to enter again, `undo` puts the login item back if the install then fails.
+  async function prepareBridge() {
+    const result = await prepareTauriMigration({ releaseAutostart: true });
+    const apiKeys = config.load().apiKeys;
+    console.log(`[capri] Tauri migration (update): ok=${result.ok} keys=${(result.keys || []).length} failed=${(result.failed || []).length} autostartReleased=${result.autostartReleased ?? 'n/a'}${result.skipped ? ` skipped=${String(result.skipped).slice(0, 120)}` : ''}`);
+    return {
+      problem: bridgeProblem(result, apiKeys, (id) => llm.PROVIDERS[id]?.label || id),
+      undo: () => {
+        if (result.autostartReleased === true) platform.autostart.set(true);
+      },
+    };
   }
 
   function stop() {

@@ -17,7 +17,7 @@
 const nodeFs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 
 const STAGING = '.Capri-update-staging';
 const BACKUP = '.Capri-previous.app';
@@ -114,7 +114,8 @@ function createMacInstaller({ exePath, tmpDir, download, relaunch, arch = proces
       ready = { version, zip, dir };
     },
 
-    async install(version) {
+    // bridge (TAURI-13): the bundle is replaced by the Tauri build, whose executable has another name; relaunch({ bridge })
+    async install(version, { bridge = false } = {}) {
       if (!ready || ready.version !== version) throw new Error('Update is not downloaded');
       guard();
       const parent = path.dirname(bundle);
@@ -153,9 +154,29 @@ function createMacInstaller({ exePath, tmpDir, download, relaunch, arch = proces
         fs.rmSync(staging, { recursive: true, force: true });
       }
       forget();
-      relaunch();
+      relaunch({ bridge });
     },
   };
+}
+
+/**
+ * Starts the bundle at `bundle` once process `pid` (the app being replaced) has gone, through the system (`open`).
+ * Electron's app.relaunch() execs the old executable's path inside the bundle; after a bridge update that bundle is the
+ * Tauri build, with another executable (Contents/MacOS/capri), and on a case-sensitive volume the old name is not there.
+ * `open` also starts it as a normal application (its own launch services identity, not a child of this process), which
+ * means it does not inherit this process's environment: `env` ({ NAME: value }) is handed over with `open --env`, and is
+ * only ever given for a local test build (updates.js).
+ * The waiting is a detached shell with the pid, the variables and the path as arguments (never part of the script text);
+ * it gives up after about 30 s and starts the app anyway.
+ */
+function relaunchBundle({ bundle, pid, env = {}, log = () => {}, spawnFn = spawn }) {
+  if (!bundle) throw new Error('no bundle to start');
+  const script = 'pid="$1"; shift; n=0; while kill -0 "$pid" 2>/dev/null && [ "$n" -lt 100 ]; do sleep 0.3; n=$((n+1)); done; exec /usr/bin/open "$@"';
+  const vars = Object.entries(env).flatMap(([name, value]) => ['--env', `${name}=${value}`]);
+  const child = spawnFn('/bin/sh', ['-c', script, 'capri-relaunch', String(pid), ...vars, bundle], { detached: true, stdio: 'ignore' });
+  child.unref?.();
+  log(`relaunch: ${path.basename(bundle)} after pid ${pid}`);
+  return child;
 }
 
 // At start: what an update left behind: the previous version and an unpacked staging next to the
@@ -178,4 +199,4 @@ function cleanup({ exePath, tmpDir = null, fs = nodeFs }) {
   }
 }
 
-module.exports = { createMacInstaller, cleanup, bundleOf, locationProblem, pickZip, verifyFile, STAGING, BACKUP };
+module.exports = { createMacInstaller, cleanup, relaunchBundle, bundleOf, locationProblem, pickZip, verifyFile, STAGING, BACKUP };
