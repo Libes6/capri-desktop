@@ -10,6 +10,8 @@ use tauri::WebviewWindow;
 
 /// NSScreenSaverWindowLevel: what Electron's 'screen-saver' maps to.
 const SCREEN_SAVER_LEVEL: isize = 1000;
+/// While her menu is open: under the menu windows (NSPopUpMenuWindowLevel is 101), so she does not cover them.
+pub const BELOW_MENU_LEVEL: isize = 90;
 /// canJoinAllSpaces | stationary | fullScreenAuxiliary: every Space, over full-screen apps.
 const SPACES: usize = 1 | 16 | 256;
 
@@ -49,6 +51,15 @@ pub fn overlay_level(win: &WebviewWindow) -> String {
         let on_space: bool = msg_send![w, isOnActiveSpace];
         let quiet = prevent_activation(w, true);
         format!("NSWindow level={level} collectionBehavior={behavior:#x} onActiveSpace={on_space} preventsActivation={quiet}")
+    }
+}
+
+/// Only the level, nothing else (`overlay_level` also sets the Spaces flags and the rest). On the main thread.
+pub fn set_level(win: &WebviewWindow, level: isize) {
+    if let Some(w) = ns_window(win) {
+        unsafe {
+            let _: () = msg_send![w, setLevel: level];
+        }
     }
 }
 

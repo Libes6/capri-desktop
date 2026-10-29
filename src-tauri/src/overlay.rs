@@ -227,17 +227,33 @@ pub fn menu_state(app: &AppHandle, opened: bool) {
     trace(|| format!("menu {} -> window ignore={ignore}", if opened { "opened" } else { "closed" }));
     if let Ok(win) = window(app) {
         let _ = win.set_ignore_cursor_events(ignore);
+        // she is above the menu's windows (level 1000, the menu's is 101): under them while it is open, back on top
+        // when it has closed
+        #[cfg(target_os = "macos")]
+        if opened {
+            let w = win.clone();
+            let _ = win.run_on_main_thread(move || crate::mac::set_level(&w, crate::mac::BELOW_MENU_LEVEL));
+        } else {
+            apply_level(&win);
+        }
     }
     NUDGE.store(true, Ordering::SeqCst);
 }
 
 pub fn keep_on_top(app: &AppHandle) {
+    // the level goes back on top when the menu closes (menu_state), not under the open menu
+    if gate(|g| g.menu_is_open()) {
+        return;
+    }
     if let Ok(win) = window(app) {
         apply_level(&win);
     }
 }
 
 pub fn raise(app: &AppHandle) {
+    if gate(|g| g.menu_is_open()) {
+        return;
+    }
     if let Ok(win) = window(app) {
         apply_level(&win);
         #[cfg(target_os = "macos")]
