@@ -1,7 +1,7 @@
 'use strict';
 
 // CI check of the Linux X11 window watcher against a real X server (Xvfb + a window manager), without
-// Electron: it must see a window opened for it, with its frame, and the window in front.
+// the app: it must see a window opened for it, with its frame, and the window in front.
 //   xmessage -geometry 420x260+150+120 probe & node scripts/x11-probe.js
 // An extra check only: Xvfb with openbox is not a desktop people use (see docs/LINUX_WINDOW_TRACKING.md).
 

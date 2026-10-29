@@ -35,7 +35,7 @@ const KINDS = {
   'linux-x86_64': { find: (n) => n.endsWith('.AppImage'), release: (v) => `Capri-${v}-Linux-x64.AppImage` },
 };
 
-/** Capri-<version>-<OS>-<arch>.<ext>, the Tauri names (the Electron release's are lower-case: mac, win, linux). */
+/** Capri-<version>-<OS>-<arch>.<ext>, the release names. */
 function assetName(version, platform) {
   const kind = KINDS[platform];
   if (!kind) throw new Error(`Unknown platform: ${platform}`);

@@ -77,7 +77,7 @@ impl Bridge {
         let exe = std::env::current_exe().ok().map(|p| p.to_string_lossy().into_owned());
         let resources = path(p.resource_dir());
         let root = repo_root().map(|r| r.to_string_lossy().into_owned());
-        let packaged = false; // until TAURI-12/13: the updater and the feed are Electron's
+        let packaged = false; // the shell reports itself unpackaged to the core: the updater is driven by Rust (updater.rs)
         let (screens, cursor) = (overlay::screens_for_hello(app), overlay::cursor_json(app));
         json!({
             "name": app.config().product_name.clone().unwrap_or_else(|| "Capri".into()),

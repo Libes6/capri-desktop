@@ -27,11 +27,6 @@ test('every platform, a release-tag URL for each, and a signature that is the .s
   assert.equal(feed.platforms['linux-x86_64'].url.split('/').pop(), 'Capri-0.3.0-Linux-x64.AppImage');
 });
 
-test('asset names never collide with the Electron release\'s (lower-case os names, other extensions)', () => {
-  const electron = ['win-x64.exe', 'linux-x86_64.AppImage', 'linux-amd64.deb', 'mac-arm64.dmg', 'mac-arm64.zip'].map((s) => `Capri-0.3.0-${s}`);
-  for (const p of [...REQUIRED, 'darwin-x86_64']) assert.ok(!electron.includes(assetName('0.3.0', p)), p);
-});
-
 test('an Intel Mac entry is optional, and only when it is signed', () => {
   const feed = manifest('0.3.0', { ...assets(), 'darwin-x86_64': { name: assetName('0.3.0', 'darwin-x86_64'), signature: SIG } });
   assert.ok(feed.platforms['darwin-x86_64']);

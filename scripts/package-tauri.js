@@ -28,7 +28,6 @@ const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
 const { stage } = require('./stage-frontend');
 const { updaterConfig } = require('./updater-config');
-const { bridgeEnabled } = require('./bridge-feed');
 
 const ROOT = path.resolve(__dirname, '..');
 const TAURI = path.join(ROOT, 'src-tauri');
@@ -183,19 +182,8 @@ function verify(platform, dir = bundleDir(), { log = console.log } = {}) {
   return files;
 }
 
-/**
- * The bridge zip (TAURI-13): the Tauri Capri.app zipped with ditto (`--keepParent`: the .app is the one folder in the zip), the
- * shape src/main/mac-update.js of the Electron build unpacks. Apple Silicon only (the Electron build never had another Mac).
- */
-function bridgeZip(app, out, { exec = execFileSync } = {}) {
-  const zip = path.join(out, `${path.basename(app, '.app')}-bridge.zip`);
-  fs.rmSync(zip, { force: true });
-  exec('/usr/bin/ditto', ['-c', '-k', '--keepParent', app, zip]);
-  return zip;
-}
-
 /** Copies what a release needs into <dest>/<platform>/. */
-function collect(platform, dest, dir = bundleDir(), { bridge = bridgeEnabled(), requireSig = true } = {}) {
+function collect(platform, dest, dir = bundleDir(), { requireSig = true } = {}) {
   const files = findOutputs(platform, dir);
   const out = path.join(dest, platform);
   fs.mkdirSync(out, { recursive: true });
@@ -207,10 +195,6 @@ function collect(platform, dest, dir = bundleDir(), { bridge = bridgeEnabled(), 
     if (!fs.existsSync(file)) throw new Error(`missing: ${file}${file.endsWith('.sig') ? ' (was TAURI_SIGNING_PRIVATE_KEY set?)' : ''}`);
     fs.copyFileSync(file, path.join(out, path.basename(file)));
     copied.push(path.basename(file));
-  }
-  if (bridge && platform === 'darwin-aarch64') {
-    if (!files.app) throw new Error('the bridge zip needs Capri.app');
-    copied.push(path.basename(bridgeZip(files.app, out)));
   }
   return copied;
 }
@@ -300,4 +284,4 @@ if (require.main === module) {
   try { main(); } catch (err) { console.error(`package-tauri: ${err.message}`); process.exit(1); }
 }
 
-module.exports = { PLATFORMS, platformOf, sidecarFile, resourcesMap, resourcesConfig, expectedFiles, missingFrom, findOutputs, collect, bridgeZip, verify };
+module.exports = { PLATFORMS, platformOf, sidecarFile, resourcesMap, resourcesConfig, expectedFiles, missingFrom, findOutputs, collect, verify };

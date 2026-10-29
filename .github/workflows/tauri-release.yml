@@ -1,13 +1,13 @@
 name: Tauri builds and release draft
 
-# TAURI-12, docs/TAURI_RELEASE.md. The Electron pipeline (build.yml) is untouched and keeps making the Electron files of the
-# same release; this one makes the Tauri files (installers, update packages with .sig, latest.json, SHA256SUMS).
+# TAURI-12, docs/TAURI_RELEASE.md. The only release pipeline: it makes the installers, the update packages with .sig,
+# latest.json and SHA256SUMS.
 #
 # Triggers and what each does:
 #   pull_request -> main, feat/tauri   checks + builds all platforms, NO updates (no secrets), no draft
 #   push feat/tauri                    the same, with the update key if the repository has it; no draft (the commit is not main's)
-#   push main                          builds, then creates / updates the DRAFT release fork-v<version>, next to the Electron
-#                                      draft job (same commit, same concurrency group). Skipped if that version is already public.
+#   push main                          builds, then creates / updates the DRAFT release fork-v<version>.
+#                                      Skipped if that version is already public.
 #   workflow_dispatch                  builds; with `draft` also the DRAFT (from the branch you run it on)
 # Nothing here publishes a release. A published release is never touched (the plan job stops / skips).
 on:
@@ -137,7 +137,7 @@ jobs:
             libssl-dev libdbus-1-dev libxdo-dev libxcb1-dev libxrandr-dev libx11-dev \
             file xz-utils libfuse2t64 \
             xvfb openbox picom x11-utils dbus-x11 libgl1-mesa-dri libglx-mesa0
-      # `--ignore-scripts`: Electron's binary (a postinstall download) is not needed to test or package the Tauri build
+      # `--ignore-scripts`: no install script of a dependency is needed to test or package the build
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Source checks
         run: |
@@ -238,7 +238,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-    # the Electron draft job (build.yml) writes the same draft: one at a time, neither cancels the other
+    # one draft writer at a time, never cancelled half way
     concurrency:
       group: capri-fork-release
       cancel-in-progress: false

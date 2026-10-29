@@ -121,7 +121,7 @@ function buildExecutable({ bundlePath, outFile, work }) {
   const postject = path.join(ROOT, 'node_modules', '.bin', process.platform === 'win32' ? 'postject.cmd' : 'postject');
   const args = [outFile, 'NODE_SEA_BLOB', blob, '--sentinel-fuse', 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2'];
   if (process.platform === 'darwin') args.push('--macho-segment-name', 'NODE_SEA');
-  // postject is an optional peer of electron-builder: a clean `npm ci` may not install it, so fall back to the pinned
+  // postject is not a dependency of the project: a clean `npm ci` does not install it, so fall back to the pinned
   // version of the lockfile (TAURI-12: the CI builds on clean machines)
   if (fs.existsSync(postject)) run(postject, args, { shell: process.platform === 'win32' });
   else run('npm', ['exec', '--yes', '--package=postject@1.0.0-alpha.6', '--', 'postject', ...args], { shell: process.platform === 'win32' });

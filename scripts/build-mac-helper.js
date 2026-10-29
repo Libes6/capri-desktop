@@ -1,8 +1,7 @@
 'use strict';
 
 // Builds the macOS window helper (src/main/mac/capri-windows.swift) into src/main/mac/bin/, where
-// mac/window-watch.js looks for it; electron-builder copies it into the macOS bundle's Resources/bin
-// (package.json build.mac.extraResources). Needs the Xcode Command Line Tools (swiftc); no npm dependency.
+// mac/window-watch.js looks for it; scripts/package-tauri.js puts it into the macOS bundle's Resources/bin. Needs the Xcode Command Line Tools (swiftc); no npm dependency.
 //
 //   node scripts/build-mac-helper.js [--arch arm64|x64] [--required] [--force]
 //

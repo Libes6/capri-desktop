@@ -1,6 +1,5 @@
 'use strict';
-// TAURI-12: the Tauri packaging and release scripts (package-tauri, release-tauri, verify-signatures) and the line between
-// the Electron package and the Tauri one. Nothing here builds, signs with a real key, or talks to GitHub.
+// TAURI-12: the Tauri packaging and release scripts (package-tauri, release-tauri, verify-signatures). Nothing here builds, signs with a real key, or talks to GitHub.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -39,10 +38,9 @@ test('resources: capri-hook on every system, the mac helper only on macOS, windo
   assert.deepEqual(pack.resourcesMap('darwin-x86_64'), pack.resourcesMap('darwin-aarch64'));
   assert.deepEqual(pack.resourcesMap('windows-x86_64'), { 'resources/bin/capri-hook.exe': 'bin/capri-hook.exe', 'resources/windows.ps1': 'windows.ps1' });
   assert.deepEqual(pack.resourcesMap('linux-x86_64'), { 'resources/bin/capri-hook': 'bin/capri-hook' });
-  // where the core and the hooks look (sidecar/main.js CAPRI_RESOURCES, mac/window-watch.js, windows.js, migrate.js)
+  // where the core and the hooks look (sidecar/main.js CAPRI_RESOURCES, mac/window-watch.js, windows.js)
   assert.match(read('src', 'main', 'mac', 'window-watch.js'), /'bin', 'capri-windows'/);
   assert.match(read('src', 'main', 'windows.js'), /'windows\.ps1'/);
-  assert.match(read('src', 'main', 'migrate.js'), /path\.join\(resources, 'bin'\)/);
   assert.deepEqual(pack.resourcesConfig('linux-x86_64', { identifier: 'x.y' }).identifier, 'x.y');
   assert.ok(!('identifier' in pack.resourcesConfig('linux-x86_64')));
 });
@@ -152,9 +150,6 @@ test('assemble: release names, the installers for people, .sig, one SHA256SUMS o
   assert.equal(sums.length, 5);
   assert.ok(sums.every((l) => /^[0-9a-f]{64} {2}Capri-0\.3\.0-/.test(l)));
   assert.deepEqual(rel.checkRelease(out, '0.3.0').at(-1), 'latest.json');
-  // none of the names is one of the Electron release's
-  const electron = ['win-x64.exe', 'linux-x86_64.AppImage', 'linux-amd64.deb', 'mac-arm64.dmg', 'mac-arm64.zip'].map((s) => `Capri-0.3.0-${s}`);
-  for (const name of fs.readdirSync(out)) assert.ok(!electron.includes(name), name);
 });
 
 test('assemble: an Intel Mac, when it was built, gets its own entry and dmg', (t) => {
@@ -203,7 +198,7 @@ test('checkRelease: a tampered file, a stale signature, a feed of another versio
   assert.throws(() => rel.checkRelease(out, '0.3.0'), /not of release fork-v0\.3\.0/);
 });
 
-test('draft plan: only ever a draft; a published release, a tag at another commit, foreign files from another commit refuse', () => {
+test('draft plan: only ever a draft; a published release, a tag at another commit, files that are not ours from another commit refuse', () => {
   const sha = 'a'.repeat(40);
   const other = 'b'.repeat(40);
   const fresh = rel.draftPlan({ existing: null, version: '0.3.0', sha });
@@ -217,33 +212,27 @@ test('draft plan: only ever a draft; a published release, a tag at another commi
   assert.throws(() => rel.draftPlan({ existing: null, version: '0.3.0', sha, refs: [{ ref: 'refs/tags/fork-v0.3.0', object: { type: 'tag', sha } }] }), /another commit/);
   assert.equal(rel.draftPlan({ existing: null, version: '0.3.0', sha, refs: [{ ref: 'refs/tags/fork-v0.3.0', object: { type: 'commit', sha } }] }).create, true);
   for (const v of ['0.3', 'v0.3.0', '0.3.0-rc.1', '']) assert.throws(() => rel.draftPlan({ existing: null, version: v, sha }), /stable/);
-  // the draft is shared with the Electron job: same commit, any assets; another commit only if every asset is ours
-  const draft = (commit) => ({ draft: true, id: 1, target_commitish: commit, body: 'Electron notes' });
-  const electronAsset = { name: 'latest-mac.yml' };
+  // a draft with a file we do not own (added by hand): same commit is fine; another commit only if every asset is ours
+  const draft = (commit) => ({ draft: true, id: 1, target_commitish: commit, body: 'Hand-written notes' });
+  const electronAsset = { name: 'notes-from-me.txt' };
   const ourAsset = { name: 'Capri-0.3.0-Linux-x64.deb' };
   assert.equal(rel.draftPlan({ existing: draft(sha), version: '0.3.0', sha, assets: [electronAsset, ourAsset] }).create, false);
   assert.throws(() => rel.draftPlan({ existing: draft(other), version: '0.3.0', sha, assets: [electronAsset, ourAsset] }), /same commit/);
   assert.equal(rel.draftPlan({ existing: draft(other), version: '0.3.0', sha, assets: [ourAsset] }).payload.target_commitish, sha);
 });
 
-test('release notes: our block is replaced on a re-run and the rest of the draft is kept; the Electron job keeps our block', () => {
-  const first = rel.mergeBody('Electron notes', rel.tauriBlock('0.3.0', 'a'.repeat(40)));
-  assert.match(first, /^Electron notes\n\n<!-- capri-tauri:begin -->/);
+test('release notes: our block is replaced on a re-run and the rest of the draft is kept', () => {
+  const first = rel.mergeBody('Hand-written notes', rel.tauriBlock('0.3.0', 'a'.repeat(40)));
+  assert.match(first, /^Hand-written notes\n\n<!-- capri-tauri:begin -->/);
   const again = rel.mergeBody(first, rel.tauriBlock('0.3.0', 'c'.repeat(40)));
   assert.equal(again.split(rel.BEGIN).length, 2);
   assert.match(again, /c{40}/);
   assert.doesNotMatch(again, /a{40}/);
-  assert.match(again, /^Electron notes/);
-  const { draftPayload } = require('../scripts/draft-release');
-  const electron = draftPayload({ draft: true, body: first }, '0.3.0', 'd'.repeat(40));
-  assert.equal(electron.draft, true);
-  assert.match(electron.body, /capri-tauri:begin/);
-  assert.equal(electron.body.split(rel.BEGIN).length, 2);
-  assert.doesNotMatch(draftPayload(null, '0.3.0', 'd'.repeat(40)).body, /capri-tauri/);
+  assert.match(again, /^Hand-written notes/);
 });
 
-test('stale assets of ours are removed from the draft, the Electron files never', () => {
-  const existing = ['latest.yml', 'latest-mac.yml', 'Capri-0.3.0-mac-arm64.dmg', 'SHA256SUMS.txt', 'Capri-0.3.0-macOS-x64.dmg', 'latest.json', 'SHA256SUMS', 'Capri-0.3.0-Linux-x64.deb'].map((name) => ({ name }));
+test('stale assets of ours are removed from the draft, files that are not ours never', () => {
+  const existing = ['notes.txt', 'latest-mac.yml', 'Capri-0.3.0-mac-arm64.dmg', 'SHA256SUMS.txt', 'Capri-0.3.0-macOS-x64.dmg', 'latest.json', 'SHA256SUMS', 'Capri-0.3.0-Linux-x64.deb'].map((name) => ({ name }));
   const wanted = ['latest.json', 'SHA256SUMS', 'Capri-0.3.0-Linux-x64.deb'];
   assert.deepEqual(rel.staleAssets(existing, wanted).map((a) => a.name), ['Capri-0.3.0-macOS-x64.dmg']);
 });
@@ -255,45 +244,14 @@ test('one version everywhere: package.json, Cargo.toml and tauri.conf.json', () 
 });
 
 // --- the line between the two packages
-const globs = (list) => list.filter((p) => !p.startsWith('!'));
-
-test('the Electron package takes nothing of the Tauri build: no shell, sidecar, crates, binaries, Tauri scripts', () => {
-  const build = JSON.parse(read('package.json')).build;
-  const included = globs(build.files);
-  for (const g of included) {
-    assert.ok(!/src-tauri|crates|sidecar|binaries|\.cargo|target/.test(g), `build.files: ${g}`);
-  }
-  const resources = [...(build.mac.extraResources || []), ...(build.extraResources || [])].map((r) => r.from);
-  for (const from of resources) assert.ok(!/src-tauri|crates|sidecar|binaries|target/.test(from), from);
-  assert.deepEqual(build.mac.extraResources.map((r) => r.from), ['src/main/mac/bin/capri-windows']);
-  // the scripts folder is shipped whole (the hooks installers are in it); the Tauri-only ones are cut out
-  assert.ok(included.includes('scripts/**'));
-  const excluded = build.files.filter((p) => p.startsWith('!')).map((p) => p.slice(1));
-  for (const file of fs.readdirSync(path.join(ROOT, 'scripts'))) {
-    if (!/tauri|sidecar|stage-frontend|release-manifest|updater-config|verify-signatures|draft-release|bridge-feed/.test(file)) continue;
-    assert.ok(excluded.includes(`scripts/${file}`), `scripts/${file} must not be in the Electron package`);
-  }
-  // whitelist: of the scripts folder only the hooks installers, the demo and check-llm belong to the app; every other script
-  // (release, CI, probes, packaging) must be excluded, whenever it was added
-  for (const file of fs.readdirSync(path.join(ROOT, 'scripts'))) {
-    if (/^(install-.*hooks.*|demo.*|check-llm)\.js$/.test(file)) continue;
-    assert.ok(excluded.includes(`scripts/${file}`), `scripts/${file} would end up in the Electron package`);
-  }
-  // and what the shipped code needs is not cut: the core requires these three, the hooks the rest of src/hooks/assets
-  for (const needed of ['scripts/demo-sequence.js', 'scripts/install-hooks.js', 'scripts/install-codex-hooks.js', 'scripts/install-hooks-agy.js']) {
-    assert.ok(!excluded.includes(needed), needed);
-  }
-});
-
 test('the Tauri package takes only what package-tauri stages: the sidecar, the resources map, the bundle config', () => {
   const bundle = JSON.parse(read('src-tauri', 'tauri.bundle.conf.json')).bundle;
-  assert.deepEqual(Object.keys(bundle).sort(), ['active', 'externalBin', 'macOS', 'windows']);
-  assert.deepEqual(bundle.windows, { nsis: { installerHooks: 'windows/hooks.nsh' } }); // TAURI-13: removes the Electron install, restarts after --force-run
+  assert.deepEqual(Object.keys(bundle).sort(), ['active', 'externalBin', 'macOS']);
   assert.equal(bundle.macOS.signingIdentity, '-');
   const plist = read('src-tauri', bundle.macOS.entitlements);
   assert.match(plist, /com\.apple\.security\.cs\.allow-jit/);
   assert.match(plist, /com\.apple\.security\.cs\.allow-unsigned-executable-memory/);
-  // no updater or key in the committed configuration (updater-config.js adds it at build time) and no Electron anywhere
+  // no updater or key in the committed configuration (updater-config.js adds it at build time)
   const conf = JSON.parse(read('src-tauri', 'tauri.conf.json'));
   assert.equal(conf.plugins?.updater, undefined);
   assert.equal(conf.bundle.resources, undefined);
@@ -317,9 +275,8 @@ test('the workflow is wired to the same scripts, never publishes, and pins its a
   assert.equal((text.match(/contents: write/g) || []).length, 2);
   // the secrets go to the packaging step only, never to a step that runs tests or checks
   assert.equal((text.match(/secrets\.TAURI_SIGNING_PRIVATE_KEY\b/g) || []).length, 2); // the presence check + the package step
-  // both draft jobs (Electron's and this one) share a concurrency group, so they cannot create two drafts at once
+  // the draft job runs one at a time, and is never cancelled half way
   assert.match(text, /group: capri-fork-release/);
-  assert.match(read('.github', 'workflows', 'build.yml'), /group: capri-fork-release/);
   // cargo test compiles generate_context!, which embeds the generated src-tauri/frontend: staged first
   assert.ok(text.indexOf('scripts/stage-frontend.js') > 0 && text.indexOf('scripts/stage-frontend.js') < text.indexOf('cargo test --locked'));
   // a pull request's code never sees the signing key
