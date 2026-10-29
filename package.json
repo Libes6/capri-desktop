@@ -36,7 +36,11 @@
     "tauri:sidecar": "node scripts/build-sidecar.js",
     "tauri:dev": "node scripts/tauri.js dev",
     "tauri:build": "node scripts/tauri.js build",
-    "tauri:test": "node scripts/tauri.js test"
+    "tauri:test": "node scripts/tauri.js test",
+    "tauri:package": "node scripts/package-tauri.js",
+    "tauri:package:verify": "node scripts/package-tauri.js verify",
+    "tauri:package-smoke": "node scripts/package-smoke.js",
+    "tauri:release": "node scripts/release-tauri.js"
   },
   "keywords": [
     "claude-code",
@@ -72,7 +76,18 @@
       "!src/main/mac/bin/**",
       "!scripts/before-pack.js",
       "!scripts/build-mac-helper.js",
-      "!scripts/updater-smoke.js"
+      "!scripts/updater-smoke.js",
+      "!scripts/tauri.js",
+      "!scripts/build-sidecar.js",
+      "!scripts/stage-frontend.js",
+      "!scripts/package-tauri.js",
+      "!scripts/package-smoke.js",
+      "!scripts/release-tauri.js",
+      "!scripts/release-manifest.js",
+      "!scripts/verify-signatures.js",
+      "!scripts/updater-config.js",
+      "!scripts/perf-probe-tauri.js",
+      "!scripts/updater-smoke-tauri.js"
     ],
     "asarUnpack": [
       "hooks/**",

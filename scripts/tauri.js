@@ -37,7 +37,7 @@ function main(command) {
     const r = spawnSync(process.execPath, [path.join(__dirname, 'build-sidecar.js')], { stdio: 'inherit' });
     if (r.status !== 0) process.exit(r.status || 1);
     cargo(['build', '--release']);
-    console.log(`built: ${path.join(targetDir(), 'release', 'capri' + exe)} (+ src-tauri/binaries/capri-sidecar-*; the .app / installers are TAURI-12)`);
+    console.log(`built: ${path.join(targetDir(), 'release', 'capri' + exe)} (+ src-tauri/binaries/capri-sidecar-*; the .app / installers: npm run tauri:package, docs/TAURI_RELEASE.md)`);
     return;
   }
   cargo(['build']);

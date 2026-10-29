@@ -19,3 +19,6 @@ src-tauri/frontend/
 src-tauri/binaries/
 src-tauri/gen/
 src-tauri/target/
+
+# Tauri packaging (TAURI-12): files staged for the bundler
+src-tauri/resources/
