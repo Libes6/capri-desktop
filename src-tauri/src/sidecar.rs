@@ -194,6 +194,10 @@ fn supervise(inner: Arc<Inner>, command: impl Fn() -> Command, handler: Arc<dyn 
             return;
         };
         thread::sleep(delay);
+        // the app began to leave while this slept: no new process for an app that is going
+        if inner.leaving.load(Ordering::SeqCst) {
+            break;
+        }
         let mut cmd = command();
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let mut child = match cmd.spawn() {
@@ -207,6 +211,10 @@ fn supervise(inner: Arc<Inner>, command: impl Fn() -> Command, handler: Arc<dyn 
         };
         *inner.pid.lock().unwrap() = Some(child.id());
         *inner.stdin.lock().unwrap() = child.stdin.take();
+        if inner.leaving.load(Ordering::SeqCst) {
+            // shutdown() ran between the check above and now and found nothing to close: the EOF ends it
+            inner.stdin.lock().unwrap().take();
+        }
         set_state(&inner, State::Up);
         eprintln!("[capri] sidecar started, pid {}", child.id());
 
@@ -223,8 +231,10 @@ fn supervise(inner: Arc<Inner>, command: impl Fn() -> Command, handler: Arc<dyn 
         let status = wait_for_exit(&mut child);
         *inner.pid.lock().unwrap() = None;
         inner.stdin.lock().unwrap().take();
-        if let Some(r) = reader { let _ = r.join(); }
-        if let Some(s) = stderr { let _ = s.join(); }
+        // a grandchild that inherited the pipes can hold them open after the sidecar is gone: do not wait for it
+        for t in [reader, stderr].into_iter().flatten() {
+            join_within(t, PIPE_LINGER);
+        }
         let failed = inner.pending.fail_all("the Capri core stopped");
         let reason = format!("exited with {status} ({failed} requests dropped)");
         if inner.leaving.load(Ordering::SeqCst) {
@@ -236,6 +246,19 @@ fn supervise(inner: Arc<Inner>, command: impl Fn() -> Command, handler: Arc<dyn 
         handler.on_down(&reason, true);
     }
     set_state(&inner, State::Stopped);
+}
+
+/// How long the sidecar's pipes may stay open after it exited (a process it started can hold them).
+const PIPE_LINGER: Duration = Duration::from_millis(1500);
+
+fn join_within(handle: thread::JoinHandle<()>, limit: Duration) {
+    let until = Instant::now() + limit;
+    while !handle.is_finished() && Instant::now() < until {
+        thread::sleep(Duration::from_millis(20));
+    }
+    if handle.is_finished() {
+        let _ = handle.join();
+    } // else: left to end by itself
 }
 
 fn wait_for_exit(child: &mut Child) -> String {
@@ -386,6 +409,34 @@ mod tests {
         let downs = h.downs.lock().unwrap();
         assert_eq!(downs.len(), 4, "three exits that restart, and the one that gives up");
         assert_eq!(downs.last().unwrap().1, false);
+    }
+
+    #[test]
+    fn a_process_holding_the_pipes_open_does_not_stop_the_restarts() {
+        // the sidecar exits at once, but a child it left behind keeps its stdout: the reader would never see EOF
+        let h = Arc::new(Recorder::default());
+        let s = Sidecar::start(sh("sleep 8 & exit 3"), h, RestartPolicy::new(2, Duration::from_secs(60), Duration::from_millis(5)));
+        wait_until("failed", || matches!(s.state(), State::Failed(_)));
+    }
+
+    #[test]
+    fn nothing_is_started_for_an_app_that_is_leaving() {
+        use std::sync::atomic::AtomicUsize;
+        let starts = Arc::new(AtomicUsize::new(0));
+        let counted = starts.clone();
+        let command = move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+            let mut c = Command::new("sh");
+            c.args(["-c", "exit 1"]);
+            c
+        };
+        let h = Arc::new(Recorder::default());
+        let s = Sidecar::start(command, h, RestartPolicy::new(5, Duration::from_secs(60), Duration::from_millis(300)));
+        wait_until("first start", || starts.load(Ordering::SeqCst) == 1);
+        wait_until("restarting", || matches!(s.state(), State::Restarting(_)));
+        s.shutdown(Duration::from_millis(100)); // the supervisor is asleep before the second start (600 ms)
+        thread::sleep(Duration::from_millis(1000));
+        assert_eq!(starts.load(Ordering::SeqCst), 1, "no start after shutdown");
     }
 
     #[test]

@@ -170,6 +170,9 @@ impl Handler for Bridge {
 
     fn on_down(&self, reason: &str, restarting: bool) {
         println!("[capri] core down: {reason} (restarting: {restarting})");
+        // the core decided whether her window takes clicks; with no core nobody can give them back, and a window
+        // left taking them would cover the screen (for good, when it does not come back)
+        overlay::click_through(&self.app, true);
     }
 }
 
