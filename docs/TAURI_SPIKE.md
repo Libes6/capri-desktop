@@ -1,5 +1,7 @@
 # TAURI-00: прототип overlay, итог
 
+> Исторический документ: Electron-версия удалена в TAURI-14 (2026-10-29); упоминания Electron описывают то, с чем сравнивали или что переносили. Электрон-код в репозитории не хранится.
+
 Прототип: `spike/tauri-overlay/` (Tauri 2.12, wry/tao из его дерева зависимостей, WKWebView). Прозрачное окно на весь экран, настоящий WebGL-спрайт из `src/renderer/js/sprite.js` (копия без изменений) с анимацией 12 fps, пропуск кликов через опрос курсора в Rust, drag мышью. Логики Capri, трея, настроек, хуков нет.
 
 Проверено на одной машине: MacBook M4, macOS 26 (Darwin 25.6), arm64, один экран 2560×1664 при scaleFactor 2. Windows и Linux на этой машине нет: для них написан CI (`.github/workflows/tauri-spike.yml`, `spike/tauri-overlay/scripts/ci-linux.sh`), **он ни разу не запускался**.

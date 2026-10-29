@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Idle CPU / GPU / wakeups of the Tauri spike, same method as scripts/perf-probe.js of the Electron app
+// Idle CPU / GPU / wakeups of the Tauri spike, same method as scripts/perf-probe-tauri.js
 // (ps cputime deltas, top idlew/power, ioreg AGXDeviceUserClient accumulatedGPUTime). macOS only.
 //   node scripts/perf-probe.js --pid <spike pid> --stdin <fifo the spike reads> --log <spike log> [--secs 45]
 // The spike's WebKit helpers (Web Content, GPU, Networking) are XPC services, not children of the app:

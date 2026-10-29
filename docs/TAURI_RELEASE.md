@@ -3,15 +3,14 @@
 How the Tauri build is packaged, what `.github/workflows/tauri-release.yml` does, what has to be set up on GitHub, and
 how a draft is checked before somebody publishes it. The formats of the feed, the signature and the tag rules are in
 [TAURI_UPDATES.md](TAURI_UPDATES.md); the sidecar in [TAURI_SIDECAR.md](TAURI_SIDECAR.md). Pattern: the Gustaf project's
-`release-build.yml` and `docs/release.md`; the Electron pipeline (`build.yml`, `scripts/draft-release.js`) is unchanged
-in behaviour and stays until TAURI-14.
+`release-build.yml` and `docs/release.md`. This is the only release pipeline (the Electron one was removed in TAURI-14).
 
 ## 1. Packaging on one machine
 
 ```sh
 cargo install tauri-cli --locked --version '=2.12.4' --root ~/tools/tauri-cli     # once, outside the repository
 export CAPRI_TAURI_CLI=~/tools/tauri-cli/bin/cargo-tauri                           # or put cargo-tauri on PATH and use `cargo tauri`
-npm ci --ignore-scripts                                                            # not Electron's download
+npm ci --ignore-scripts                                                            # no install script is needed
 npm run tauri:package                                                              # this machine's platform
 ```
 
@@ -26,7 +25,7 @@ be cross-built):
    `src/main/windows.ps1` to `resources/windows.ps1`;
 5. `cargo tauri build --bundles <app,dmg | nsis | appimage,deb>` with three merged configurations: `tauri.bundle.conf.json`
    (externalBin, `Entitlements.plist`, ad-hoc identity `-`), the `bundle.resources` map made by the script (the paths above
-   become `Resources/bin/capri-hook`, `Resources/bin/capri-windows`, `windows.ps1`: where `findHookBin`/`migrate.js`,
+   become `Resources/bin/capri-hook`, `Resources/bin/capri-windows`, `windows.ps1`: where `findHookBin`,
    `mac/window-watch.js` and `windows.js` look) and, with `CAPRI_UPDATER_PUBLIC_KEY`, `scripts/updater-config.js`;
 6. verifies the result without installing it: macOS the files inside `Capri.app` + `codesign --verify --deep --strict` + the
    JIT entitlements on the sidecar; Linux the file list of the `.deb`; Windows the NSIS file list through 7-Zip;
@@ -39,7 +38,7 @@ re-checks. `CAPRI_APP_IDENTIFIER` replaces the identifier for a test build (the 
 (`TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]`) must be there or the script stops.
 
 `npm run tauri:package-smoke -- <executable> [--expect-window-tracking]` (`scripts/package-smoke.js`) starts a packaged app with
-a temporary profile (`CAPRI_USER_DATA`), `CAPRI_NO_MIGRATE=1` and its own bridge port, waits for the core's
+a temporary profile (`CAPRI_USER_DATA`) and its own bridge port, waits for the core's
 `listening on 127.0.0.1:<port>` line, `GET /health`, on macOS `window tracking: on`, and stops the process it started. The
 fuller scenario is TAURI-11's `smoke-test-tauri.js`.
 
@@ -52,17 +51,14 @@ fuller scenario is TAURI-11's `smoke-test-tauri.js`.
 | `push` to `main` | all four | **required** | yes, `fork-v<version>`; skipped if that version is already public |
 | `workflow_dispatch` (+ input `draft`, `notes`) | all four | required when `draft` | only with `draft: true`; refuses a public version |
 
-Why this scheme: tags are `fork-vX.Y.Z` for both builds (TAURI_UPDATES.md), and a release is one tag at one commit. The
-Electron job drafts from `main`, so the Tauri job drafts from `main` too, in the same push: both fill the same draft from the
-same commit. Until `feat/tauri` is merged the workflow file does not exist on `main`, so `main` keeps producing only the
-Electron draft; before the merge a Tauri draft is made only by hand (`workflow_dispatch`, `draft: true`), and the script refuses
-to put Tauri files into a draft that already holds Electron files of **another** commit. Trial builds that need a public feed
-are published by a human as pre-releases (`latest` and `electron-updater` never see those).
+Why this scheme: tags are `fork-vX.Y.Z` (TAURI_UPDATES.md), and a release is one tag at one commit. The Tauri job drafts from
+`main`, in the push that changed it, and the script refuses to put files into a draft that already holds files that are not
+its own from **another** commit. Trial builds that need a public feed are published by a human as pre-releases.
 
 Jobs: **plan** (ubuntu; `contents: write` only because drafts are invisible to a read token; versions of `package.json`,
 `Cargo.toml`, `tauri.conf.json` must agree; asks GitHub whether the tag's release is none / draft / published) → **build**
 (matrix `macos-15` arm64, `macos-15-intel`, `windows-latest`, `ubuntu-24.04`; `fail-fast: false`) → **draft**
-(`contents: write`; concurrency group `capri-fork-release`, shared with the Electron draft job, so they never run at once).
+(`contents: write`; concurrency group `capri-fork-release`, so two drafts never run at once).
 
 The build job: Node 22 (npm cache), stable Rust with `Swatinem/rust-cache`, Linux packages (`libwebkit2gtk-4.1-dev`, GTK,
 `libayatana-appindicator3-dev`, `librsvg2-dev`, `patchelf`, `libssl-dev`, `libdbus-1-dev` for the key store, `libxdo-dev`,
@@ -77,8 +73,8 @@ missing platform/installer/signature, odd version) → `verify-signatures.js` (t
 the public key, the same check the app's updater makes) → `release-tauri.js draft`: re-checks the folder (feed URLs name
 `fork-vX.Y.Z` and files that are there, `.sig` = the feed's signature, every hash), then creates or updates the **draft**
 (`draft: true` is the only value ever sent; a public release stops it; a tag that exists at another commit stops it), replaces
-only its own assets, deletes its own stale ones (never an Electron file), and keeps its notes between
-`<!-- capri-tauri:begin/end -->` markers (the Electron job keeps that block when it rewrites the body). `latest.json` is
+only its own assets, deletes its own stale ones (never a file that is not its own), and keeps its notes between
+`<!-- capri-tauri:begin/end -->` markers. `latest.json` is
 uploaded last. The tag is created by GitHub when a human publishes the draft.
 
 No secret reaches `npm test`, `cargo test` or the smoke steps. Actions are pinned to major versions (`@v4`, `@stable` for the
@@ -95,48 +91,30 @@ Nothing is set by this task.
 4. Actions must be allowed to run; the workflows declare their own permissions (`contents: read` by default, `contents: write` only in the plan and draft jobs), so the repository's default token permission may stay read-only only if the workflow-level request is honoured; if drafts fail with 403, set Settings → Actions → General → Workflow permissions to read and write.
 5. The repository is public (the feed `releases/latest/download/latest.json` carries no token).
 6. Optional: protect `main` / require review so that a push to `main` is deliberate; every push to `main` that does not bump
-   the version rebuilds and re-drafts the same version (as the Electron job does) until somebody publishes it.
+   the version rebuilds and re-drafts the same version until somebody publishes it.
 
 Without 2 and 3 the workflow still builds (pull requests, `feat/tauri`, a manual run without `draft`) but the packages have
 updates off and no `.sig`; a run that has to make a draft stops with an explanation.
 
-## 4. Tags and releases next to the Electron build
+## 4. Tags and releases
 
 One tag per version: `fork-vX.Y.Z`, the same `X.Y.Z` in `package.json`, `Cargo.toml` and `tauri.conf.json` (checked by the
-workflow and by a test). The Electron files and the Tauri files of a version live in **one draft**, with disjoint names:
-
-| Electron (build.yml) | Tauri (tauri-release.yml) |
-|---|---|
-| `Capri-X-win-x64.exe`, `-linux-x86_64.AppImage`, `-linux-amd64.deb`, `-mac-arm64.dmg`, `-mac-arm64.zip` | `Capri-X-Windows-x64-setup.exe`, `-Linux-x64.AppImage`, `-Linux-x64.deb`, `-macOS-arm64.dmg`, `-macOS-arm64.app.tar.gz` (+ `-macOS-x64.*` if the Intel row is built) |
-| `latest.yml`, `latest-linux.yml`, `latest-mac.yml` + 3 `.blockmap` | `latest.json` + one `.sig` per update package |
-| `SHA256SUMS.txt` | `SHA256SUMS` |
-
-Both draft jobs must run for the **same commit** (a push to `main`). They write one after the other (shared concurrency group;
-if a third run queues, GitHub drops the older waiting one: re-run it).
-
-**The bridge (TAURI-13, [TAURI_BRIDGE.md](TAURI_BRIDGE.md)).** `bridge.json` (`{ "tauri": false }` by default) decides what
-`latest*.yml` name. With `true`, in the same commit both jobs agree: the Electron job (`draft-release.js`) uploads its installers
-and **no** `latest*.yml` or blockmap; the Tauri job also uploads `Capri-X-macOS-arm64-bridge.zip` (a `ditto` zip of the Tauri
-`Capri.app`, made by `package-tauri.js --collect` on the Mac runner) and writes `latest.yml` (to the Tauri `-Windows-x64-setup.exe`),
-`latest-linux.yml` (`-Linux-x64.AppImage`) and `latest-mac.yml` (the bridge zip), each with `capriBridge: tauri`, the sha512 and size
-of the uploaded bytes (`scripts/bridge-feed.js`), next to `latest.json`. `checkRelease` refuses the folder when they disagree with
-the files or the version, or when feeds are present with the bridge off. These three names are not "Tauri assets" for the stale-file
-cleanup (the Electron job owns them when the bridge is off).
+workflow and by a test). The draft holds `Capri-X-Windows-x64-setup.exe`, `-Linux-x64.AppImage`, `-Linux-x64.deb`,
+`-macOS-arm64.dmg`, `-macOS-arm64.app.tar.gz` (+ `-macOS-x64.*` if the Intel row is built), `latest.json`, one `.sig` per update
+package and `SHA256SUMS`. The draft job runs one at a time (concurrency group `capri-fork-release`); if a third run queues,
+GitHub drops the older waiting one: re-run it.
 
 ## 5. Checking a draft before publishing
 
-A published release is read at once by `electron-updater` (the three `latest*.yml`) and by installed Tauri apps
-(`latest.json`), so check the draft, then publish by hand:
+A published release is read at once by installed apps (`latest.json`), so check the draft, then publish by hand:
 
-- [ ] Electron: `latest.yml`, `latest-linux.yml`, `latest-mac.yml`, `Capri-X-win-x64.exe.blockmap`, `Capri-X-mac-arm64.dmg.blockmap`, `Capri-X-mac-arm64.zip.blockmap` are there (6 files) with the 5 Electron installers and `SHA256SUMS.txt`.
-- [ ] Tauri: `latest.json` is there and its `version` is X; its three (four with Intel) URLs name `releases/download/fork-vX.Y.Z/...` and files of this draft.
+- [ ] `latest.json` is there and its `version` is X; its three (four with Intel) URLs name `releases/download/fork-vX.Y.Z/...` and files of this draft.
 - [ ] Each update package has its `.sig` (`.app.tar.gz.sig`, `-setup.exe.sig`, `.AppImage.sig`) and it equals the `signature` in `latest.json`.
 - [ ] `SHA256SUMS` lists the Tauri installers (dmg, deb, packages): `sha256sum -c SHA256SUMS` on the downloaded files.
 - [ ] Optionally re-verify: `CAPRI_UPDATER_PUBLIC_KEY=... node scripts/verify-signatures.js <folder of downloaded files>`.
-- [ ] The commit named in the draft is the commit both jobs built (the notes block shows it) and is on `main`.
+- [ ] The commit named in the draft is the commit the jobs built (the notes block shows it) and is on `main`.
 - [ ] Install each platform's installer on a clean machine at least once (macOS: right-click → Open; Windows: SmartScreen "More info").
-- [ ] It is not marked pre-release by mistake and is not published before TAURI-13 is ready (see TAURI_UPDATES.md rule 2).
-- [ ] A bridge release (`bridge.json` true): `latest.yml`, `latest-linux.yml`, `latest-mac.yml` name `Capri-X-Windows-x64-setup.exe`, `-Linux-x64.AppImage`, `-macOS-arm64-bridge.zip` of this draft, say `capriBridge: tauri`, and the bridge zip is in `SHA256SUMS`; no `.blockmap` is expected.
+- [ ] It is not marked pre-release by mistake.
 
 ## 6. Limits
 
@@ -161,7 +139,7 @@ cold Cargo cache for `src-tauri`.
 
 The `.app` passes `codesign --verify --deep --strict`; the sidecar carries the `allow-jit` and
 `allow-unsigned-executable-memory` entitlements. A copy of the `.app` outside `/Applications`, with a temporary profile
-(`CAPRI_USER_DATA`, `CAPRI_NO_MIGRATE=1`, its own port): the sidecar started, the core said `listening`, `GET /health` answered,
+(`CAPRI_USER_DATA`, its own port): the sidecar started, the core said `listening`, `GET /health` answered,
 `window tracking: on (macOS helper)` appeared, the overlay window was created (`NSWindow level=1000`), the update status was
 `tauri install` (the key was in that build). `findHookBin` found `Contents/Resources/bin/capri-hook`. The user's real
 `~/.claude/settings.json` and `~/.codex/hooks.json` were not touched (modification times unchanged). The signature of the

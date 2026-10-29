@@ -1,10 +1,9 @@
 # Capri (Tauri): in-app updates (TAURI-10)
 
-The behaviour of the Electron build ([UPDATES.md](UPDATES.md), CAPRI-11) and of the user's Gustaf project
+The behaviour of CAPRI-11 and of the user's Gustaf project
 (`docs/release.md` → Application behavior, `docs/updater-smoke.md`), on `tauri-plugin-updater`. The rules live
-in the same controller (`src/main/updates.js`, `UpdateController`), which runs in the Node core; only the
-transport changed. Electron's transports are untouched and still used by the Electron build: `startUpdates`
-picks by `platform.updater.transport` (`'tauri'` only on the sidecar platform).
+in the same controller (`src/main/updates.js`, `UpdateController`), which runs in the Node core; the transport is
+`tauriTransport` over Rust's updater (`platform.updater.get().tauri`). The Electron updater is gone (TAURI-14).
 
 ## How it is put together
 
@@ -32,7 +31,7 @@ settings window ── updates:check|download|install ──► core (Node sidec
   Messages lose query strings, are one line, at most 300 characters.
 - Restart: macOS/Linux, `Update::install` replaces the app and the core calls `platform.app.relaunch()` (the
   shell stops the sidecar, then `AppHandle::restart`). The confirmation ("Update and restart") comes **before**
-  `install`, in the settings window, as in Electron: `updates:install` runs only with `confirmed === true`.
+  `install`, in the settings window: `updates:install` runs only with `confirmed === true`.
   Windows: the NSIS installer ends the process itself; the shell stops the sidecar before running it (the sidecar
   is a file of the install) and restarts the app if the installer could not start. `tauri-plugin-process` is not
   used: `AppHandle::restart` is what its `relaunch` calls, and the shell already relaunches that way.
@@ -97,41 +96,29 @@ as `macOS-arm64.app.tar.gz`, `Windows-x64-setup.exe`, `Linux-x64.AppImage`; copi
 files, `SHA256SUMS` and `latest.json`. It fails, and writes nothing, for a missing platform, a missing or empty or
 odd signature, two packages for a platform, an empty package, a version that is not stable `X.Y.Z`. An Intel Mac
 (`darwin-x86_64`) is optional. No key is read; the URLs name the release's own tag (`fork-vX.Y.Z`), never `/latest/`.
-The Tauri names are chosen not to collide with the Electron ones in the same release (`Capri-0.3.0-win-x64.exe`,
-`-mac-arm64.zip`, `-linux-x86_64.AppImage`, `-linux-amd64.deb`): capital OS names, other suffixes (a test pins it).
 The installers for people (dmg, deb, NSIS) are not in the feed; the CI (TAURI-12, [TAURI_RELEASE.md](TAURI_RELEASE.md)) adds them to the draft.
 
-## Tags and releases: not mixing Electron and Tauri
+## Tags and releases
 
-What exists: `fork-vX.Y.Z` (this fork's Electron releases, `electron-updater` reads them) and the inherited `v0.x`
-(old, upstream). Facts that decide the scheme:
+What exists: `fork-vX.Y.Z` (this fork's releases) and the inherited `v0.x` (old, upstream). Facts that decide the scheme:
 
 - `releases/latest` (so `…/latest/download/latest.json`) is the newest **published** (not draft, not
-  pre-release) release **by creation date**, not by version or tag name. electron-updater's GitHub provider
-  also takes the newest non-pre-release release and reads `latest*.yml` from *that* release's tag.
-- So one published release is read by both worlds, and what it holds decides who can update from it.
+  pre-release) release **by creation date**, not by version or tag name.
 
 Rules:
 
-1. **One version line, one tag scheme: `fork-vX.Y.Z`.** The Tauri build has the same `X.Y.Z` as the Electron
-   `package.json` of the same commit. No separate `tauri-v*` tags: a second line would make "latest" ambiguous.
-   The inherited `v0.x` releases stay as they are; never re-publish or edit one into "latest".
-2. **Until the bridge (TAURI-13) is released, no Tauri release is published.** The CI (TAURI-12) only makes
-   **drafts**; a draft is invisible to `latest` and to electron-updater. Trial builds of the Tauri app that need a
-   public feed are published as **pre-releases**, which neither `latest` nor electron-updater
-   (`allowPrerelease = false`) ever sees.
-3. **The bridge release (and every release after it, until Electron is removed in TAURI-14) carries both feeds**:
-   `latest.yml` / `latest-mac.yml` / `latest-linux.yml` (+ the Electron assets, which TAURI-13 points at the Tauri
-   installers; since TAURI-13 `scripts/bridge-feed.js` writes them from the Tauri files, see
-   [TAURI_BRIDGE.md](TAURI_BRIDGE.md)) **and** `latest.json` (+ the Tauri assets above). An Electron user updates through
-   the first, a Tauri user through the second; the file names do not overlap.
-4. **After the first Tauri build is installed anywhere, never publish a release without `latest.json`**: a Tauri
+1. **One version line, one tag scheme: `fork-vX.Y.Z`**, the same `X.Y.Z` as `package.json`. No separate `tauri-v*` tags: a
+   second line would make "latest" ambiguous. The inherited `v0.x` releases stay as they are; never re-publish or edit one
+   into "latest".
+2. **The CI (TAURI-12) only makes drafts**; a draft is invisible to `latest`. Trial builds that need a public feed are
+   published as **pre-releases**, which `latest` never sees.
+3. **After the first Tauri build is installed anywhere, never publish a release without `latest.json`**: a Tauri
    app asking `latest/download/latest.json` of such a release gets a 404, which it reports honestly as
    `error (other, feed)` and never as "current", but it cannot update until a complete release is published.
    TAURI-12's workflow should fail a draft without it.
-5. A feed names the immutable tag of its own release, so a feed fetched before a newer release keeps meaning the
+4. A feed names the immutable tag of its own release, so a feed fetched before a newer release keeps meaning the
    same files. The plugin offers only a version greater than the installed one (no downgrade).
-6. Key rotation is not possible for installed apps (they trust the embedded public key): losing the private key
+5. Key rotation is not possible for installed apps (they trust the embedded public key): losing the private key
    means installing a new build by hand. Back it up.
 
 ## What is needed on GitHub (nothing is done by this task)
@@ -189,7 +176,7 @@ server modes: `update` (0.1.1 offered), `current` (0.1.0), `bad-signature` (one 
 `broken-download` (503 on the package), `offline` (503 on the feed). Stop the server to try a refused connection.
 The settings window of the Tauri build is TAURI-06's, so the steps are run by the core itself
 (`CAPRI_UPDATER_SMOKE_STEPS`, only in this test build); the buttons and the confirmation dialog of the window are
-the same code as in Electron and are not exercised here.
+the same code as the rest of the core and are not exercised here.
 
 ### Result of the run on this Mac (macOS 26, Apple Silicon, 2026-10-28)
 

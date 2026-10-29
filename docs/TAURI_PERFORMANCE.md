@@ -1,5 +1,7 @@
 # TAURI-11: the CAPRI-06/07 measurements, repeated on the Tauri build
 
+> Исторический документ: Electron-версия удалена в TAURI-14 (2026-10-29); упоминания Electron описывают то, с чем сравнивали или что переносили. Электрон-код в репозитории не хранится.
+
 Date: 2026-10-29. One machine, a lot of noise, no big conclusions. The Electron numbers of `docs/PERFORMANCE.md` were taken on another day; this time Electron was measured again in the same hour, with the same script family, between the Tauri runs.
 
 ## Setup

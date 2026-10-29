@@ -1,24 +1,38 @@
 > **Libes6 fork — v0.1.0**
 >
-> Cross-platform packaging and startup fixes based on upstream 0.4.4. Our version sequence starts at 0.1.0; it does not follow upstream numbering. Release tags use `fork-v0.1.0` to preserve the inherited upstream `v0.1.0` tag. The original documentation below describes the full Windows feature set.
+> A Tauri 2 build based on upstream 0.4.4. Our version sequence starts at 0.1.0; it does not follow upstream numbering. Release tags use `fork-v0.1.0` to preserve the inherited upstream `v0.1.0` tag. The original documentation below describes the full Windows feature set.
 
-## Fork builds and releases
+## Build and run
 
-- Windows x64: `npm run dist:win` → EXE installer.
-- Linux x64: `npm run dist:linux` → AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported in 0.1.0 because global cursor tracking is required. GNOME may require an AppIndicator extension for the tray.
-- macOS Apple Silicon: `npm run dist:mac` → ARM64 DMG and ZIP. Spaces/fullscreen overlay visibility and menu-bar icon sizing are configured for macOS. Screen capture requires permission in System Settings.
+Capri is a Rust shell ([Tauri 2](https://tauri.app), `src-tauri/`) around a Node sidecar that runs the app's logic (`src/main/`, `sidecar/`). Her pages (`src/renderer/`) are plain JavaScript in the system webview.
 
-Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
+Supported systems:
 
-Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain Windows-only in 0.1.0. On macOS (Apple Silicon) a small bundled Swift helper reports window geometry and the window in front without any permission (no Screen Recording, no Accessibility), so she tracks windows, sits on them and rides along; window titles, AI/game detection and the other Windows-only features stay unavailable there, see [docs/MAC_WINDOW_TRACKING.md](docs/MAC_WINDOW_TRACKING.md). Experimental: on a Linux X11 session (not XWayland or native Wayland) with `xprop`/`xwininfo` installed (`x11-utils`, a dependency of the .deb), she tracks windows and sits on them; this is not yet verified on a real desktop, see [docs/LINUX_WINDOW_TRACKING.md](docs/LINUX_WINDOW_TRACKING.md). Unsupported window options and Linux login startup are disabled. Basic overlay animation, drag/click interaction, assistant hooks, chat with an already installed Ollama or API provider, reminders, file search and opening folders use the shared implementation. Linux uses 50 ms cursor polling for hit testing because Electron does not forward ignored mouse moves there; Windows/macOS retain event-driven tracking. Native GUI acceptance on every desktop environment is still required.
+- Windows x64: NSIS installer (`-setup.exe`).
+- Linux x64: AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported because global cursor tracking is required. GNOME may require an AppIndicator extension for the tray.
+- macOS Apple Silicon: DMG and an `.app.tar.gz` for in-app updates. Spaces/fullscreen overlay visibility and menu-bar icon sizing are configured for macOS. Screen capture requires permission in System Settings.
 
-### Automatic release pipeline
+Requirements: Node.js 22.12+, a stable [Rust](https://rustup.rs) toolchain, the system libraries Tauri needs on Linux (WebKitGTK 4.1, see `.github/workflows/tauri-release.yml`), and on macOS the Xcode Command Line Tools (the window helper is Swift). Install the JavaScript dependencies with `npm ci`.
 
-`.github/workflows/build.yml` runs tests, builds installers and launches each packaged app on native Windows, Linux X11 and macOS ARM64 runners. Pull requests validate all three platforms without creating a release. A push/merge to `main` (or a manual run on `main`) creates or updates a **draft** `fork-v<package.json version>` only after all three jobs succeed. It attaches five installers and `SHA256SUMS.txt`, targeting the exact built commit. Only the release job has write permission.
+```bash
+npm run tauri:dev          # stage her pages, build the shell, run the app (the sidecar runs under your node)
+npm test                   # node tests: hooks, protocol, platform, release safeguards
+npm run test:smoke         # starts the built app with a temporary profile and checks that her pages come up
+npm run tauri:test         # cargo test
+npm run check:webkit       # her pages in a WebKit engine (no app needed)
+npm run tauri:package      # the installer for this machine (see docs/TAURI_RELEASE.md)
+```
 
-Successive merges update the same version's draft. Publish manually after reviewing/testing the artifacts. Once a version is published (or its tag points elsewhere), bump the version before the next release; the pipeline refuses to replace published binaries. Update both manifests with `npm version patch --no-git-tag-version` (or `minor`/`major`). Do not create the release tag yourself before the draft is ready.
+`npm run test:smoke` and the packaged-app smoke test use a temporary profile, their own port and key store service, and a fake login item: they do not install hooks, call AI providers or change your settings. Headless Linux CI runs a compositing window manager and software WebGL.
 
-These initial builds have no Windows certificate or Apple Developer ID/notarization. macOS packaging may apply an ad-hoc signature, but that is not a trusted distribution signature. Configure distribution signing before treating the installers as production releases.
+Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain Windows-only in 0.1.0. On macOS (Apple Silicon) a small bundled Swift helper reports window geometry and the window in front without any permission (no Screen Recording, no Accessibility), so she tracks windows, sits on them and rides along; window titles, AI/game detection and the other Windows-only features stay unavailable there, see [docs/MAC_WINDOW_TRACKING.md](docs/MAC_WINDOW_TRACKING.md). Experimental: on a Linux X11 session (not XWayland or native Wayland) with `xprop`/`xwininfo` installed (`x11-utils`, a dependency of the .deb), she tracks windows and sits on them; this is not yet verified on a real desktop, see [docs/LINUX_WINDOW_TRACKING.md](docs/LINUX_WINDOW_TRACKING.md). Unsupported window options and Linux login startup are disabled. Native GUI acceptance on every desktop environment is still required.
+
+### Release pipeline
+
+`.github/workflows/tauri-release.yml` runs the tests, builds the packages and starts each packaged app on native Windows, Linux X11 and macOS ARM64 runners. Pull requests validate all platforms without creating a release. A push to `main` (or a manual run) creates or updates a **draft** `fork-v<package.json version>` only after every build succeeded, targeting the exact built commit, and never publishes. Publish manually after reviewing and testing the artifacts. Once a version is published (or its tag points elsewhere), bump the version before the next release; the pipeline refuses to replace published binaries. Update the manifests with `npm version patch --no-git-tag-version` and keep `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` at the same version (`node scripts/release-tauri.js versions` checks it). In-app updates are signed (minisign); see [docs/TAURI_RELEASE.md](docs/TAURI_RELEASE.md) and [docs/TAURI_UPDATES.md](docs/TAURI_UPDATES.md).
+
+These builds have no Windows certificate or Apple Developer ID/notarization. macOS packaging applies an ad-hoc signature, which is not a trusted distribution signature: Gatekeeper asks to open the app, and Windows SmartScreen may warn.
+
 
 ---
 
@@ -310,13 +324,13 @@ asleep. You can just leave her there.
 
 ### From the source (macOS, Linux, developers)
 
-You need [Node.js](https://nodejs.org) 20 or newer.
+You need [Node.js](https://nodejs.org) 22.12 or newer and a Rust toolchain (see "Build and run" above).
 
 ```bash
 git clone https://github.com/mochiiwuff/capri-desktop.git
 cd capri-desktop
-npm install
-npm start
+npm ci
+npm run tauri:dev
 ```
 
 Keep that terminal open while she runs. Not tested on macOS or Linux yet: she should start, but the window tricks
@@ -392,7 +406,7 @@ named like this (`.mp3`, `.wav`, `.ogg` or `.m4a`):
 
 ## Is it safe?
 
-- All of the code is right here. The installer is built from it with `npm run dist`; you can build your own.
+- All of the code is right here. The installer is built from it with `npm run tauri:package`; you can build your own.
 - Nothing leaves your PC (see below): she only talks to Claude Code through a hook on `127.0.0.1`.
 - What she changes on your system: the hook in `~/.claude/settings.json` (a backup is written first, and you can remove
   it from her menu), and a startup entry only if you tick "Start with Windows". She uninstalls like any app, from
@@ -500,7 +514,9 @@ scripts/install-hooks.js adds / removes the hook in ~/.claude/settings.json
 tools/build-sprite.py    rebuilds the sprite from the original cut-out (Python + Pillow, only if you change it)
 tools/build-cutins.py    cuts the cut-ins and her faces out of frames of the show
 tools/build-intro.py     cuts her intro's close-ups out of their background, all the same way
-src/main/                Electron: full-screen transparent click-through window, tray, local HTTP bridge
+src-tauri/               Rust shell (Tauri): full-screen transparent click-through window, tray, updates
+sidecar/                 the Node process that runs the logic next to the shell
+src/main/                the logic: config, chat, settings, local HTTP bridge
   windows.js / .ps1      where the other windows are (Windows only), so she can sit on them
   ollama.js              her chat: the local model through Ollama, or one of its cloud models
   apps.js                closing an app you asked her to close (after your click)
@@ -524,11 +540,11 @@ src/renderer/js/
   voice.js               the sounds
 ```
 
-To hack on it: `npm run dev` turns on debug routes on the bridge (`/debug/capture` saves a frame of the window to `captures/`,
+To hack on it: `npm run dev` (the same as `npm run tauri:dev`; set `CAPRI_DEBUG=1`) turns on debug routes on the bridge (`/debug/capture` saves a frame of the window to `captures/`,
 `/debug/testwin` opens test windows she can sit on, one per name, `/debug/mouse` moves and clicks a stand-in pointer
 over Capri's window, without touching the real one, `/debug/type` types in her chat, `/debug/menu` lists her menu and
 can click an item of it).
-`npm run dist` builds the Windows installer in `dist/`.
+`npm run tauri:package` builds the installer for this machine (see docs/TAURI_RELEASE.md).
 
 ## Credits and rights
 

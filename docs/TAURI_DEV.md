@@ -14,7 +14,7 @@ Her pages are Tauri's `frontendDist` (`src-tauri/frontend/`, generated, not comm
 ## Where things go
 
 - Rust's build folder is Cargo's `target/`: set `CARGO_TARGET_DIR` to keep it outside the repository (`src-tauri/target/` is ignored by git anyway).
-- Her data: `~/Library/Application Support/capri.desktop` (the identifier's folder; Electron's was `Capri`; the first start imports it, see `docs/TAURI_MIGRATION_DATA.md`; with `CAPRI_USER_DATA` set nothing is imported unless `CAPRI_ELECTRON_USER_DATA=<dir>` names the profile, `CAPRI_NO_MIGRATE=1` turns it off). **`CAPRI_USER_DATA=<dir>` uses another profile**: use it for every try-out, with `CAPRI_PORT=<port>` for the hooks bridge (47823 by default, the real Capri's). Autostart writes a LaunchAgent / the registry's Run key: for try-outs set **`CAPRI_AUTOSTART_FAKE=<file>`** (the state is that file's, the system is untouched).
+- Her data: `~/Library/Application Support/capri.desktop` (the identifier's folder). **`CAPRI_USER_DATA=<dir>` uses another profile**: use it for every try-out, with `CAPRI_PORT=<port>` for the hooks bridge (47823 by default, the real Capri's). Autostart writes a LaunchAgent / the registry's Run key: for try-outs set **`CAPRI_AUTOSTART_FAKE=<file>`** (the state is that file's, the system is untouched).
 - `CAPRI_NODE` names the `node` that runs the sidecar when it is not on the GUI's PATH (an nvm node). `CAPRI_SIDECAR=<executable>` runs that file as the sidecar instead (the SEA one). `CAPRI_ROOT` is the project folder (set by `tauri:dev`).
 - Debug: with `CAPRI_DEBUG_STDIN=1` each line on stdin is JavaScript run in her page (the result is printed as `[eval] ...`); `!sidecar` prints its pid and state, `!kill` kills it (to see it come back), `!exit` quits.
 
