@@ -35,7 +35,7 @@ Hooks are also looked at at every later start (the binary's path moves when the 
 
 ## API keys: `enc:` to `kc:`
 
-Electron's `safeStorage` is Chromium's os_crypt: its key is a "Capri Safe Storage" Keychain item on macOS, DPAPI + `Local State` on Windows, libsecret/kwallet on Linux. Another process cannot open it reliably (on macOS it asks the user's permission for someone else's item), so the Electron build, which can, does the work before it is replaced (`prepareTauriMigration`, called 8 s after each start, and by TAURI-13 just before installing the update with `releaseAutostart: true`):
+Electron's `safeStorage` is Chromium's os_crypt: its key is a "Capri Safe Storage" Keychain item on macOS, DPAPI + `Local State` on Windows, libsecret/kwallet on Linux. Another process cannot open it reliably (on macOS it asks the user's permission for someone else's item), so the Electron build, which can, does the work before it is replaced (`prepareTauriMigration`, called 8 s after each start, and by TAURI-13 just before installing the bridge update with `releaseAutostart: true`, see [TAURI_BRIDGE.md](TAURI_BRIDGE.md); a hand-over that fails there shows her a warning naming the keys):
 
 1. `safeStorage.decryptString` each `enc:` key.
 2. Master key: the one in the system key store (service `capri.desktop`, or `CAPRI_KEYCHAIN_SERVICE`; account `master-key`) if there is one, else a new random 256-bit key put there and read back.

@@ -24,6 +24,8 @@ const TAG_PREFIX = 'fork-v';
 const STARTUP_DELAY = 45 * 1000;
 // the local test feed (scripts/updater-smoke.js): only a build made by it, with this mark in its package.json
 const TEST_FEED = /^http:\/\/127\.0\.0\.1:\d+\/?$/;
+// the names of the Tauri build's files in a release (scripts/release-manifest.js): the Electron ones are lower case (-mac-, -win-)
+const TAURI_ASSET = /^Capri-\d+\.\d+\.\d+-(macOS|Windows|Linux)-[\w.-]+$/;
 
 // the release page of a tag (fork-vX.Y.Z), or of a version
 function releasePage(tag, version) {
@@ -96,12 +98,41 @@ function plainNotes(notes) {
 }
 
 /**
+ * The bridge release (TAURI-13, docs/TAURI_BRIDGE.md): the update that replaces this Electron app by the Tauri build.
+ * Its latest*.yml (scripts/bridge-feed.js) says `capriBridge: tauri` AND names only files with the Tauri release names;
+ * an ordinary Electron update has neither, so it is never taken for one (the login item is let go for a bridge only).
+ */
+function isTauriBridge(info) {
+  if (info?.capriBridge !== 'tauri') return false;
+  const names = [...(Array.isArray(info.files) ? info.files.map((f) => f?.url) : []), info.path]
+    .filter((u) => typeof u === 'string' && u)
+    .map((u) => { try { return decodeURIComponent(u.split(/[?#]/)[0].split('/').pop()); } catch { return ''; } });
+  return names.length > 0 && names.every((n) => TAURI_ASSET.test(n));
+}
+
+/**
+ * What to tell her before the bridge update is installed: null when the keys and settings are in the hand-over file,
+ * else { keys: [the providers whose API key could not be carried over], reason }. Pure; no key ever passes through it.
+ * result: what prepareTauriMigration answered; apiKeys: config.apiKeys as stored ("enc:…").
+ */
+function bridgeProblem(result, apiKeys = {}, labelOf = (id) => id) {
+  const carried = new Set(result?.keys || []);
+  const encrypted = Object.entries(apiKeys || {}).filter(([, v]) => typeof v === 'string' && v.startsWith('enc:') && v.length > 4).map(([id]) => id);
+  const lost = encrypted.filter((id) => !carried.has(id));
+  if (result?.ok === true && !lost.length) return null;
+  return { keys: lost.map(labelOf), reason: redact(result?.skipped || (result?.failed?.length ? 'a key could not be opened' : '')) };
+}
+
+/**
  * One update at a time, as Gustaf's UpdateController.
  * transport.check() → null (no newer version) | { version, notes, tag, download(progress)?, install()? }
  * mode: 'install' (download and install here) | 'notify' (a .deb: shown, installed elsewhere)
  */
 class UpdateController {
-  constructor({ transport = null, disabled = null, mode = 'install', current = '', onChange = () => {}, log = () => {} } = {}) {
+  // prepare: for a bridge update (TAURI-13), async () => { problem: null | { keys, reason }, undo?() } run before it is installed
+  constructor({ transport = null, disabled = null, mode = 'install', current = '', onChange = () => {}, log = () => {}, prepare = null } = {}) {
+    this.prepare = prepare;
+    this.warned = null; // the update whose bridge warning was shown: asked again, she has agreed
     this.transport = disabled ? null : transport;
     this.mode = mode;
     this.current = current;
@@ -121,7 +152,11 @@ class UpdateController {
   // what the window and the menu are given: plain data
   view() {
     const offer = this.update && { version: this.update.version, notes: this.update.notes || '', page: releasePage(this.update.tag, this.update.version) };
-    return { ...(offer || {}), ...this.status, current: this.current, mode: this.mode, canDownload: Boolean(this.update?.download) && this.mode === 'install' };
+    return {
+      ...(offer || {}), ...this.status, current: this.current, mode: this.mode,
+      canDownload: Boolean(this.update?.download) && this.mode === 'install',
+      ...(this.update?.bridge && { bridge: true }),
+    };
   }
 
   async check() {
@@ -179,10 +214,28 @@ class UpdateController {
       this.busy = false;
       return this.view();
     }
+    // the move to the Tauri build: her keys and her login item are handed over first. A hand-over that did not fully
+    // happen does not stop the update, but she is told which keys she will enter again, and agrees once more.
+    let prepared = null;
+    if (update.bridge && this.prepare) {
+      try {
+        prepared = await this.prepare();
+      } catch (err) {
+        prepared = { problem: { keys: [], reason: redact(err?.message ?? err) } };
+      }
+      if (prepared?.problem && this.warned !== update) {
+        this.warned = update;
+        this.log(`bridge: not everything could be handed over (${prepared.problem.keys.length} keys), asking again`);
+        this.set({ kind: 'downloaded', version: update.version, bridgeWarning: prepared.problem });
+        this.busy = false;
+        return this.view();
+      }
+    }
     this.set({ kind: 'installing', version: update.version });
     try {
       await update.install();
     } catch (err) {
+      await Promise.resolve(prepared?.undo?.()).catch(() => {}); // the login item she had is put back: nothing was replaced
       this.set(updateError(err, { version: update.version }));
       this.busy = false;
     }
@@ -203,7 +256,7 @@ async function checkWith(updater) {
   if (!result) throw Object.assign(new Error('The updater is not active in this installation'), { code: 'ERR_CAPRI_INACTIVE' });
   if (!result.isUpdateAvailable) return null;
   const info = result.updateInfo || {};
-  return { info, version: info.version, notes: info.releaseNotes, tag: info.tag || null };
+  return { info, version: info.version, notes: info.releaseNotes, tag: info.tag || null, bridge: isTauriBridge(info) };
 }
 
 // Windows NSIS and the AppImage: electron-updater downloads (sha512 from latest*.yml) and installs.
@@ -216,6 +269,7 @@ function updaterTransport(updater) {
         version: found.version,
         notes: found.notes,
         tag: found.tag,
+        bridge: found.bridge,
         async download(progress) {
           const listener = (p) => progress(p?.transferred, p?.total);
           updater.on('download-progress', listener);
@@ -268,8 +322,9 @@ function macTransport(updater, installer) {
         version: found.version,
         notes: found.notes,
         tag: found.tag,
+        bridge: found.bridge,
         download: (progress) => installer.download(files, found.version, progress),
-        install: () => installer.install(found.version),
+        install: () => installer.install(found.version, { bridge: found.bridge }),
         close: () => installer.discard(),
       };
     },
@@ -336,10 +391,10 @@ function updateMode({ platform, packaged, smoke = false, env = {}, feed }) {
 /**
  * Starts the updater of the running app. deps: platform (platform/index.js: the app's version and
  * folders, relaunch and quit, and electron-updater's autoUpdater through platform.updater),
- * smoke, onChange(view), log
+ * smoke, onChange(view), log, prepareBridge (TAURI-13: async () => { problem, undo }, run before a bridge update is installed)
  * Returns the controller, plus page() and the startup check scheduled.
  */
-function startUpdates({ platform, smoke = false, onChange = () => {}, log = (line) => console.log(`[capri] update: ${line}`) }) {
+function startUpdates({ platform, smoke = false, onChange = () => {}, prepareBridge = null, log = (line) => console.log(`[capri] update: ${line}`) }) {
   if (platform.updater.transport === 'tauri') return startTauriUpdates({ platform, smoke, onChange, log });
   const packaged = platform.app.isPackaged();
   const testBuild = Boolean(packaged && safeRequire(path.join(platform.paths.get('appPath'), 'package.json'))?.capriUpdaterTest === true);
@@ -366,8 +421,11 @@ function startUpdates({ platform, smoke = false, onChange = () => {}, log = (lin
       exePath: platform.paths.get('exe'),
       tmpDir: platform.paths.get('temp'),
       download: (url, dest, opts) => autoUpdater.httpExecutor.download(new URL(url), dest, { ...opts, cancellationToken: new CancellationToken() }),
-      relaunch: () => {
-        platform.app.relaunch();
+      // a bridge update (TAURI-13) leaves the Tauri build at this path: it is started by the system (`open`) once this
+      // process has gone, not by Electron's relaunch, which would exec the Electron binary's name inside the new bundle
+      relaunch: ({ bridge = false } = {}) => {
+        if (bridge) mac.relaunchBundle({ bundle: mac.bundleOf(platform.paths.get('exe')), pid: process.pid, env: testBuild ? testEnv(process.env) : {}, log });
+        else platform.app.relaunch();
         platform.app.quit();
       },
     }));
@@ -376,7 +434,7 @@ function startUpdates({ platform, smoke = false, onChange = () => {}, log = (lin
   } else {
     transport = updaterTransport(autoUpdater);
   }
-  const controller = new UpdateController({ transport, mode: mode.mode, current: platform.app.version(), onChange, log });
+  const controller = new UpdateController({ transport, mode: mode.mode, current: platform.app.version(), onChange, log, prepare: prepareBridge });
   log(`${mode.kind} (${feed.test ? 'local test feed' : `github ${OWNER}/${REPO}`})`);
   // once, unless a check was already asked for in the settings by then
   setTimeout(() => controller.status.kind === 'idle' && controller.check(), STARTUP_DELAY).unref?.();
@@ -387,6 +445,12 @@ function startUpdates({ platform, smoke = false, onChange = () => {}, log = (lin
 // public key and https endpoints, no dev run, an AppImage or a package on Linux.
 function startTauriUpdates({ platform, smoke, onChange, log }) {
   const current = platform.app.version();
+  // the Electron build this one replaced (TAURI-13, mac-update.js) left its bundle beside this one as a hidden backup:
+  // it is removed now that the Tauri build has started. (Had it not started, the backup would still be there to put back.)
+  // (not gated on isPackaged(): the shell reports false until it is provisioned; cleanup() acts only inside a real .app bundle)
+  if (process.platform === 'darwin') {
+    try { require('./mac-update').cleanup({ exePath: platform.paths.get('exe'), tmpDir: platform.paths.get('temp') }); } catch { /* not ours to insist on */ }
+  }
   const { tauri: api } = platform.updater.get();
   const status = api.status || { mode: 'disabled', reason: 'dev' };
   if (smoke || status.mode === 'disabled') {
@@ -425,6 +489,12 @@ function startTauriUpdates({ platform, smoke, onChange, log }) {
   return controller;
 }
 
+// A local test build (scripts/updater-smoke.js) starts the Tauri build through `open`, which hands over no environment: these
+// variables of the test (its own profile, port, key store service, hook folders) are given to it. Never for an ordinary build.
+const TEST_ENV = ['CAPRI_USER_DATA', 'CAPRI_ELECTRON_USER_DATA', 'CAPRI_PORT', 'CAPRI_KEYCHAIN_SERVICE', 'CAPRI_KEYCHAIN_OPEN_ACL', 'CAPRI_NO_MIGRATE',
+  'CAPRI_AUTOSTART_FAKE', 'CAPRI_HOOK_BIN', 'CAPRI_UPDATER_SMOKE_LOG', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'AGY_CONFIG_DIR'];
+const testEnv = (env) => Object.fromEntries(TEST_ENV.filter((name) => env[name]).map((name) => [name, env[name]]));
+
 function safeRequire(file) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -444,6 +514,8 @@ module.exports = {
   notifyTransport,
   macTransport,
   tauriTransport,
+  isTauriBridge,
+  bridgeProblem,
   readFeed,
   updateMode,
   startUpdates,
