@@ -112,8 +112,16 @@ workflow and by a test). The Electron files and the Tauri files of a version liv
 | `SHA256SUMS.txt` | `SHA256SUMS` |
 
 Both draft jobs must run for the **same commit** (a push to `main`). They write one after the other (shared concurrency group;
-if a third run queues, GitHub drops the older waiting one: re-run it). The bridge release of TAURI-13 will point the Electron
-feeds at the Tauri installers; this task does not change what `latest*.yml` names.
+if a third run queues, GitHub drops the older waiting one: re-run it).
+
+**The bridge (TAURI-13, [TAURI_BRIDGE.md](TAURI_BRIDGE.md)).** `bridge.json` (`{ "tauri": false }` by default) decides what
+`latest*.yml` name. With `true`, in the same commit both jobs agree: the Electron job (`draft-release.js`) uploads its installers
+and **no** `latest*.yml` or blockmap; the Tauri job also uploads `Capri-X-macOS-arm64-bridge.zip` (a `ditto` zip of the Tauri
+`Capri.app`, made by `package-tauri.js --collect` on the Mac runner) and writes `latest.yml` (to the Tauri `-Windows-x64-setup.exe`),
+`latest-linux.yml` (`-Linux-x64.AppImage`) and `latest-mac.yml` (the bridge zip), each with `capriBridge: tauri`, the sha512 and size
+of the uploaded bytes (`scripts/bridge-feed.js`), next to `latest.json`. `checkRelease` refuses the folder when they disagree with
+the files or the version, or when feeds are present with the bridge off. These three names are not "Tauri assets" for the stale-file
+cleanup (the Electron job owns them when the bridge is off).
 
 ## 5. Checking a draft before publishing
 
@@ -128,6 +136,7 @@ A published release is read at once by `electron-updater` (the three `latest*.ym
 - [ ] The commit named in the draft is the commit both jobs built (the notes block shows it) and is on `main`.
 - [ ] Install each platform's installer on a clean machine at least once (macOS: right-click → Open; Windows: SmartScreen "More info").
 - [ ] It is not marked pre-release by mistake and is not published before TAURI-13 is ready (see TAURI_UPDATES.md rule 2).
+- [ ] A bridge release (`bridge.json` true): `latest.yml`, `latest-linux.yml`, `latest-mac.yml` name `Capri-X-Windows-x64-setup.exe`, `-Linux-x64.AppImage`, `-macOS-arm64-bridge.zip` of this draft, say `capriBridge: tauri`, and the bridge zip is in `SHA256SUMS`; no `.blockmap` is expected.
 
 ## 6. Limits
 

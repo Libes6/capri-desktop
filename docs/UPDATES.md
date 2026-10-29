@@ -198,3 +198,11 @@ temporary folder (both fixed after the run and covered by unit tests, not re-run
 Not verified: Windows NSIS and Linux AppImage updates on real systems, `.deb` notification, a real GitHub
 release (none published with update files), `/Applications` and App Management, Gatekeeper translocation on a
 real download, her optional line on screen, and the "Open download page" click (unit-tested only).
+
+## The bridge to the Tauri build (TAURI-13)
+
+A release whose `latest*.yml` carry `capriBridge: tauri` and name Tauri files replaces this app by the Tauri build. For that update
+(and only that one: `isTauriBridge` in `updates.js`) the controller first calls `prepareBridge` (the key hand-over of TAURI-09 with
+`releaseAutostart`); a hand-over that did not fully work does not block the update but shows a warning with the providers whose keys
+must be entered again and asks again ("Update anyway"). On a Mac a bridge update is relaunched through `open`, not
+`app.relaunch()`. Everything else of this document is unchanged for Electron to Electron updates. See [TAURI_BRIDGE.md](TAURI_BRIDGE.md).

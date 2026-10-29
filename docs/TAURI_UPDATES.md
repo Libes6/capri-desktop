@@ -122,8 +122,9 @@ Rules:
    (`allowPrerelease = false`) ever sees.
 3. **The bridge release (and every release after it, until Electron is removed in TAURI-14) carries both feeds**:
    `latest.yml` / `latest-mac.yml` / `latest-linux.yml` (+ the Electron assets, which TAURI-13 points at the Tauri
-   installers) **and** `latest.json` (+ the Tauri assets above). An Electron user updates through the first, a
-   Tauri user through the second; the file names do not overlap.
+   installers; since TAURI-13 `scripts/bridge-feed.js` writes them from the Tauri files, see
+   [TAURI_BRIDGE.md](TAURI_BRIDGE.md)) **and** `latest.json` (+ the Tauri assets above). An Electron user updates through
+   the first, a Tauri user through the second; the file names do not overlap.
 4. **After the first Tauri build is installed anywhere, never publish a release without `latest.json`**: a Tauri
    app asking `latest/download/latest.json` of such a release gets a 404, which it reports honestly as
    `error (other, feed)` and never as "current", but it cannot update until a complete release is published.
