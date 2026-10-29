@@ -26,6 +26,7 @@
     "test": "node --test tests/*.test.js",
     "protocol:export": "node scripts/export-protocol.js",
     "test:smoke": "node scripts/smoke-test.js",
+    "test:smoke:tauri": "node scripts/smoke-test-tauri.js",
     "updater:smoke": "node scripts/updater-smoke.js",
     "tauri:updater-smoke": "node scripts/updater-smoke-tauri.js",
     "tauri:release-manifest": "node scripts/release-manifest.js",

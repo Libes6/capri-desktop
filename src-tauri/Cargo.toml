@@ -19,7 +19,7 @@ path = "src/main.rs"
 tauri-build = { version = "~2.7", features = [] }
 
 [dependencies]
-tauri = { version = "~2.12", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "~2.12", features = ["macos-private-api", "tray-icon", "image-png", "webview-data-url"] }
 tauri-plugin-single-instance = "~2.5"
 tauri-plugin-global-shortcut = "~2.4"
 tauri-plugin-autostart = "2"

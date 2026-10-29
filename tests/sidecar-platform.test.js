@@ -130,12 +130,13 @@ test('what Rust cannot do yet is answered neutrally and logged once, the core do
     core.start();
     // the key store is not asked until init(): no key store, keys stay plain (as Electron without safeStorage)
     assert.equal(platform.secrets.isAvailable(), false);
-    // what is still Rust's to do (the demo terminal, TAURI-05) answers neutrally and is logged once
-    platform.windows.createDemoTerminal({});
-    platform.windows.createDemoTerminal({});
-    const logs = seen.filter((s) => s.kind === 'log' && /unsupported: windows.createDemoTerminal/.test(s.m));
+    // what is still not Rust's (the picture of the overlay, TAURI-11 open question) answers neutrally and is logged once
+    assert.equal(await platform.windows.createOverlay({ area: { x: 0, y: 0, width: 10, height: 10 } }).capture({}), null);
+    await platform.overlayNow().capture({});
+    const logs = seen.filter((s) => s.kind === 'log' && /unsupported: overlay.capture/.test(s.m));
     assert.equal(logs.length, 1, 'logged once');
-    assert.ok(platform.unsupported.has('windows.createDemoTerminal'));
+    assert.ok(platform.unsupported.has('overlay.capture'));
+    assert.ok(!platform.unsupported.has('windows.createDemoTerminal'), 'the demo terminal is the shell\'s now');
     assert.ok(!platform.unsupported.has('tray.create'), 'the tray is the shell\'s now');
     assert.ok(!platform.unsupported.has('shortcuts.register'), 'so are the shortcuts');
     core.stop();
@@ -315,4 +316,102 @@ test('the window helper is looked for in the resources folder when the sidecar i
   const { helperPath } = require('../src/main/mac/window-watch');
   assert.equal(helperPath('/$capri/src/main/mac', undefined, { CAPRI_RESOURCES: '/App/Resources' }), path.join('/App/Resources', 'bin', 'capri-windows'));
   assert.equal(helperPath('/repo/src/main/mac', undefined, {}), path.join('/repo/src/main/mac', 'bin', 'capri-windows'));
+});
+
+test('the demo terminal is Rust\'s window: opened by id, the core\'s destroy is not a "closed", the person\'s close is', async () => {
+  const { rust, seen, platform, userData } = await startOnSidecar();
+  try {
+    let closed = 0;
+    const win = platform.windows.createDemoTerminal({ x: 5, y: 6, width: 620, height: 300, title: 't', background: '#14101c', alwaysOnTop: true, html: '<body>hi</body>', onClosed: () => { closed++; } });
+    await tick();
+    const opened = seen.find((s) => s.method === 'demo.open');
+    assert.deepEqual({ ...opened.params, html: undefined }, { id: opened.params.id, x: 5, y: 6, width: 620, height: 300, title: 't', background: '#14101c', alwaysOnTop: true, html: undefined });
+    assert.equal(opened.params.html, '<body>hi</body>');
+    // the person closes it: Rust says so
+    rust.notify('demo.closed', { id: opened.params.id });
+    await tick();
+    assert.equal(closed, 1);
+    // the core replaces one with another (demoWindow does destroy + create): the old one's "closed" arrives late and means nothing
+    const first = platform.windows.createDemoTerminal({ html: 'a', onClosed: () => { closed += 10; } });
+    await tick();
+    const firstId = seen.filter((s) => s.method === 'demo.open').pop().params.id;
+    first.destroy();
+    platform.windows.createDemoTerminal({ html: 'b', onClosed: () => { closed += 100; } });
+    await tick();
+    assert.ok(seen.some((s) => s.method === 'demo.close' && s.params.id === firstId));
+    rust.notify('demo.closed', { id: firstId });
+    await tick();
+    assert.equal(closed, 1, 'a window the core destroyed does not call back');
+    assert.ok(!platform.unsupported.has('windows.createDemoTerminal'));
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+// TAURI-11: every command of docs/protocol.json is served by the core on the sidecar platform, and the platform
+// answers "unsupported" only where docs/TAURI_PARITY.md says so.
+const protocolJson = require('../docs/protocol.json');
+const KNOWN_UNSUPPORTED = ['overlay.capture', 'overlay.mediaSourceId', 'overlay.nativeHandle'];
+
+test('integrity: all 65 commands are registered by the core on the sidecar platform, as send or handle as the protocol says', async () => {
+  const { core, userData } = await startOnSidecar();
+  try {
+    core.start();
+    await tick();
+    assert.equal(protocolJson.commands.length, 65);
+    for (const c of protocolJson.commands) {
+      const table = c.kind === 'send' ? core.ipc.on : core.ipc.handle;
+      assert.equal(typeof table[c.channel], 'function', `${c.name} (${c.channel}) is not served as ${c.kind}`);
+    }
+    // and nothing is served that the protocol does not know
+    const known = new Set(protocolJson.commands.map((c) => c.channel));
+    for (const channel of [...Object.keys(core.ipc.on), ...Object.keys(core.ipc.handle)]) assert.ok(known.has(channel), `${channel} is served but not in the protocol`);
+    core.stop();
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('integrity: the commands that read state answer on the sidecar platform with nothing unsupported behind them', async () => {
+  const { platform, core, userData } = await startOnSidecar();
+  try {
+    core.start();
+    await tick();
+    const overlay = { label: 'overlay' };
+    const calls = [['getConfig', []], ['setConfig', [{ muted: true }]], ['screens', []], ['cursor', []], ['windowsNow', []], ['hooksStatus', []],
+      ['listSounds', []], ['claudeFound', []], ['trayPlace', []], ['chatStatus', []], ['setupInfo', []], ['demoWindow', [false]], ['openApps', []], ['media', ['play']]];
+    for (const [name, args] of calls) {
+      const value = await Promise.resolve(core.dispatch.handle(name, args, overlay)).catch((err) => { throw new Error(`${name}: ${err.message}`); });
+      assert.notDeepEqual(value, { unsupported: true }, `${name} answered unsupported`);
+    }
+    core.dispatch.handle('rendererReady', [], overlay);
+    assert.deepEqual([...platform.unsupported].sort().filter((m) => !KNOWN_UNSUPPORTED.includes(m)), [], 'a new unsupported method needs a line in docs/TAURI_PARITY.md');
+    core.stop();
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+});
+
+test('integrity: the platform names exactly the unsupported methods the parity table knows', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'platform', 'sidecar.js'), 'utf8');
+  const named = [...src.matchAll(/unsupported\('([a-zA-Z.]+)'/g)].map((m) => m[1]).sort();
+  assert.deepEqual(named, KNOWN_UNSUPPORTED);
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'TAURI_PARITY.md'), 'utf8');
+  for (const m of KNOWN_UNSUPPORTED) assert.ok(doc.includes(`\`${m}\``), `docs/TAURI_PARITY.md does not explain ${m}`);
+});
+
+test('the Tauri build offers no display mode: not in her tray menu, not in the settings window', async () => {
+  const { platform, core, userData } = await startOnSidecar();
+  try {
+    assert.equal(platform.app.renderModes, false);
+    core.start();
+    await tick();
+    const { TRAY } = require('../src/main/labels');
+    const labels = JSON.stringify(core.menu.labels());
+    assert.ok(!labels.includes(TRAY.en.displayGl) && !labels.includes(TRAY.ru.displayGl), 'no display submenu');
+    assert.ok(labels.includes(TRAY.en.motionFull) || labels.includes(TRAY.ru.motionFull), 'the menu itself is there');
+    core.stop(); // the settings window's view is tested in settings-save.test.js
+  } finally {
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
 });

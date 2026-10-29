@@ -9,8 +9,8 @@
 // read here from a cache because the platform's methods are synchronous); (TAURI-06) the tray with
 // her menu (menu-wire.js), the settings window, the application menu, the global shortcut and the
 // autostart; and (TAURI-07) the key store, screen capture, clipboard, links and files, the folder
-// picker, power events and idle time, and which application a link opens. Everything else (demo
-// window, updater) belongs to TAURI-05 and 10: it answers { unsupported: true } where a method answers
+// picker, power events and idle time, and which application a link opens; (TAURI-11) the demo's fake
+// terminal. Everything else (the picture of the overlay, its native handle: docs/TAURI_PARITY.md) answers { unsupported: true } where a method answers
 // anything, or the neutral value of its type (no picture: null, no key store: false), and is logged
 // once. The core never crashes on it.
 //
@@ -28,9 +28,10 @@ const path = require('node:path');
 const { serializeMenu, createClickBook } = require('./menu-wire');
 const { settingsBounds } = require('../settings-window');
 
+const { systemLanguages } = require('./system-languages');
 const { sealWith, openWith } = require('../seal'); // "kc:" keys: AES-256-GCM under the master key (src/main/seal.js)
 
-function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[sidecar] ${m}`) }) {
+function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[sidecar] ${m}`), detectLanguages = systemLanguages }) {
   const unsupportedCalls = new Set();
   // one line per method, once: the TAURI-05..07 work list, as it shows in a run
   function unsupported(name, neutral = { unsupported: true }) {
@@ -43,6 +44,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
   const ask = (method, params) => rpc.request(method, params).catch((err) => { log(`${method}: ${err.message}`); return { error: err.message }; });
   const tell = (method, params) => rpc.notify(method, params);
 
+  let preferredLanguages = []; // the system's list, asked once in init() (system-languages.js)
   let masterKey = null; // Buffer, once init() has it; null: no key store, keys stay plain (as Electron without safeStorage)
   let locked = Boolean(hello.locked); // the screen lock, from hello and then the events
   let idle = 'active'; // the last idle state Rust gave
@@ -67,6 +69,8 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
   let trayClick = () => {};
   let trayBounds = { x: 0, y: 0, width: 0, height: 0 };
   let settingsOpen = false;
+  let demoSeq = 0;
+  const demoWindows = new Map(); // id -> the demo terminal's handle, while Rust has it
   const shortcutFns = new Map();
   let shortcutCount = 0;
   let autostartOn = Boolean(hello.autostart);
@@ -101,6 +105,13 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       trayBounds = params;
     } else if (method === 'settings.closed') {
       settingsOpen = false;
+    } else if (method === 'demo.closed') {
+      // closed by the person (not by the core's destroy, which forgot it): the core hears of it
+      const demo = demoWindows.get(params.id);
+      if (demo && !demo.destroyed) {
+        demoWindows.delete(params.id);
+        try { demo.onClosed(); } catch (err) { log(`demo closed: ${err.message}`); }
+      }
     } else if (method === 'shortcut') {
       const fn = shortcutFns.get(params.id);
       if (fn) { try { fn(); } catch (err) { log(`shortcut: ${err.message}`); } }
@@ -179,6 +190,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
 
   // what the synchronous methods answer from; to be awaited before the core is made
   async function init() {
+    preferredLanguages = await detectLanguages().catch(() => []);
     // a first use may make the system ask the person to allow it: given time to
     const key = await rpc.request('secrets.masterKey', {}, { timeoutMs: 60000 }).catch((err) => { log(`secrets.masterKey: ${err.message}`); return { error: err.message }; });
     if (key?.available && typeof key.key === 'string') {
@@ -226,6 +238,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       runtimeVersion: () => `tauri ${hello.tauri || ''} / node ${process.versions.node}`.trim(),
       isPackaged: () => Boolean(hello.packaged),
       languages: () => {
+        if (preferredLanguages.length) return { preferred: preferredLanguages, fallback: [Intl.DateTimeFormat().resolvedOptions().locale || 'en-US'] };
         const locale = Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
         const env = (process.env.LANG || '').split('.')[0].replace('_', '-');
         const preferred = [env && env !== 'C' && env !== 'POSIX' ? env : locale];
@@ -255,6 +268,7 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
       // the address of one of the user's sound files for her page: capri://usersounds/<file>, which
       // Windows' webview sees as http://capri.localhost/<file> (Rust serves both, assets.rs)
       userSoundUrl: (file) => `${process.platform === 'win32' ? 'http://capri.localhost/' : 'capri://usersounds/'}${encodeURIComponent(file)}`,
+      renderModes: false, // WKWebView / WebView2 / WebKitGTK choose their own renderer: no display mode (settings, tray)
       setRenderMode: () => {},
       gpuStatus: () => ({}),
       serveAssets: () => {}, // Rust serves capri://usersounds/ from userData/sounds itself
@@ -407,9 +421,20 @@ function createSidecarPlatform({ rpc, hello, root, log = (m) => console.error(`[
           owns: (sender) => settingsOpen && sender?.label === 'settings',
         };
       },
-      createDemoTerminal: () => {
-        unsupported('windows.createDemoTerminal');
-        return { destroy: () => {} };
+      // the demo's fake terminal (src-tauri/src/demo.rs): a window of its own, shown without the keyboard.
+      // Rust says when it is gone; the core's own destroy() is not a "closed" (the core already knows)
+      createDemoTerminal: ({ x, y, width, height, title, background, alwaysOnTop, html, onClosed = () => {} }) => {
+        const id = ++demoSeq;
+        const handle = { id, destroyed: false, onClosed };
+        demoWindows.set(id, handle);
+        tell('demo.open', { id, x, y, width, height, title, background, alwaysOnTop: Boolean(alwaysOnTop), html });
+        return {
+          destroy: () => {
+            handle.destroyed = true;
+            demoWindows.delete(id);
+            tell('demo.close', { id });
+          },
+        };
       },
     },
 

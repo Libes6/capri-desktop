@@ -78,7 +78,9 @@ async function main() {
 
   // The one door in (src/main/dispatch.js): a refusal is a ProtocolError, never a crash. A command that
   // sends and expects nothing back just logs.
+  const seen = { rendererReady: 0 }; // for the debug route `info` (the Tauri smoke test)
   function invoke({ scope, name, args = [], sender }) {
+    if (name === 'rendererReady') seen.rendererReady = Date.now();
     const from = { label: sender?.label || scope };
     try {
       return Promise.resolve(core.dispatch.handle(name, args, from)).then((r) => (r === undefined ? null : r));
@@ -94,7 +96,7 @@ async function main() {
   core.applyRender();
   platform.app.onQuit(() => core.stop());
   platform.app.installAppMenu();
-  core.start({ debug: dev ? createDebugHandler({ core, platform }) : null });
+  core.start({ debug: dev ? createDebugHandler({ core, platform, seen }) : null });
   log(`core started (userData ${platform.paths.get('userData')})`);
   peer.notify('ready', { pid: process.pid });
 }

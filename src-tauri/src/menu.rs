@@ -283,6 +283,8 @@ pub fn route_notification(app: &AppHandle, method: &str, params: &Value) -> bool
         "app.installMenu" => install_app_menu(app),
         "settings.open" => crate::settings_window::open(app, params),
         "settings.close" => crate::settings_window::close(app),
+        "demo.open" => crate::demo::open(app, params),
+        "demo.close" => crate::demo::close(app, params),
         "settings.reset" => crate::settings_window::close(app),
         "settings.title" => crate::settings_window::set_title(app, params),
         "shortcuts.unregisterAll" => crate::shortcuts::unregister_all(app),
